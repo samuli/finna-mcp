@@ -1,0 +1,38 @@
+# Node
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build artifacts
+/dist/
+/build/
+
+# Wrangler
+.wrangler/
+.config/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+.env.*
+
+# Python venv in repo
+.venv/
+
+# Test output
+/coverage/
+.npm/
+.npm-cache/
+.npm-logs/
+
+# Local tooling
+*.tsbuildinfo

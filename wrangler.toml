@@ -1,0 +1,21 @@
+name = "finna-mcp"
+main = "src/index.ts"
+compatibility_date = "2025-12-17"
+
+[vars]
+# Optional comma-separated allowlist for organization ids
+# ORGANIZATION_ALLOWLIST = "helsinki,aalto,avaa"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "finna_mcp"
+database_id = "REPLACE_WITH_D1_ID"
+
+[[r2_buckets]]
+binding = "CACHE_BUCKET"
+bucket_name = "finna-mcp-cache"
+
+# Uncomment for local testing if needed
+# [dev]
+# ip = "0.0.0.0"
+# port = 8787
