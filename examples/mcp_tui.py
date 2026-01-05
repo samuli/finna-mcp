@@ -400,9 +400,10 @@ class FinnaTUI(App):
         await self._ensure_agent()
         assert self.agent is not None
         assert self.server is not None
+        result = None
         try:
-            async with self.server:
-                result = await self.agent.run(user_input, model_settings={"stream": False})
+            await self.server.__aenter__()
+            result = await self.agent.run(user_input, model_settings={"stream": False})
         except asyncio.CancelledError:
             self._append_conversation("System: Request cancelled.", style="blue")
             return
@@ -414,6 +415,8 @@ class FinnaTUI(App):
             self._append_conversation(f"Assistant: {output}", style="green")
             self.last_usage = _extract_usage(result)
         finally:
+            if self.server:
+                await self._safe_close_server()
             self.current_task = None
             self._set_status("Idle")
 
@@ -598,7 +601,18 @@ class FinnaTUI(App):
         if self.current_task and not self.current_task.done():
             self.current_task.cancel()
         if self.server:
+            await self._safe_close_server()
+
+    async def _safe_close_server(self) -> None:
+        if not self.server:
+            return
+        try:
             await self.server.__aexit__(None, None, None)
+        except Exception as exc:
+            self._append_conversation(
+                f"System: MCP connection closed with error: {_format_error(exc)}",
+                style="blue",
+            )
 
 
 def main() -> None:
