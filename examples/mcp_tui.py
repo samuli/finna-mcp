@@ -11,6 +11,7 @@ import subprocess
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.widgets import Button, Footer, Header, Input, Static, RichLog, Select
 
 from pydantic_ai import Agent
@@ -500,19 +501,26 @@ class FinnaTUI(App):
             return
         if button_id == "conversation-clear":
             self.conversation_lines.clear()
-            self.query_one("#conversation", RichLog).clear()
+            log = self._get_log("#conversation")
+            if log:
+                log.clear()
             return
         if button_id == "responses-clear":
             self.response_lines.clear()
-            self.query_one("#responses", RichLog).clear()
+            log = self._get_log("#responses")
+            if log:
+                log.clear()
             return
 
     def _append_conversation(self, line: str, style: str | None = None) -> None:
         self.conversation_lines.append(line)
+        log = self._get_log("#conversation")
+        if not log:
+            return
         if style:
-            self.query_one("#conversation", RichLog).write(Text(line, style=style))
+            log.write(Text(line, style=style))
         else:
-            self.query_one("#conversation", RichLog).write(line)
+            log.write(line)
 
     def _set_status(self, text: str) -> None:
         try:
@@ -529,7 +537,15 @@ class FinnaTUI(App):
 
     def _append_responses(self, line: str) -> None:
         self.response_lines.append(line)
-        self.query_one("#responses", RichLog).write(line)
+        log = self._get_log("#responses")
+        if log:
+            log.write(line)
+
+    def _get_log(self, selector: str) -> RichLog | None:
+        try:
+            return self.query_one(selector, RichLog)
+        except NoMatches:
+            return None
 
     def _copy_to_clipboard(self, content: str) -> None:
         if not content:
