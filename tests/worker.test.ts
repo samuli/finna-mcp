@@ -60,6 +60,7 @@ describe('worker', () => {
           name: 'search_records',
           arguments: {
             lookfor: 'sibelius',
+            sort: 'newest_first',
             filters: {
               include: { building: ['1/KANSA/'] },
               any: { format: ['0/Image/', '1/Image/Photo/'] },
@@ -83,6 +84,7 @@ describe('worker', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('lookfor=sibelius');
+    expect(calledUrl).toContain('sort=main_date_str%20desc');
     expect(calledUrl).toContain('filter%5B%5D=building%3A%221%2FKANSA%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=%7Eformat%3A%220%2FImage%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=%7Eformat%3A%221%2FImage%2FPhoto%2F%22');

@@ -246,6 +246,8 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     fields,
     sampleLimit,
   } = parsed.data;
+  const normalizedFilters = normalizeFilters(filters);
+  const normalizedSort = normalizeSort(sort);
 
   const url = buildSearchUrl({
     apiBase: env.FINNA_API_BASE,
@@ -253,9 +255,9 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     type,
     page,
     limit,
-    sort,
+    sort: normalizedSort,
     lng,
-    filters: filters as FilterInput | undefined,
+    filters: normalizedFilters,
     facets,
     facetFilters,
     fields: fields ?? DEFAULT_SEARCH_FIELDS,
@@ -348,6 +350,20 @@ function normalizeFilters(filters?: unknown): FilterInput | undefined {
 
 function stripFacetHrefs(payload: Record<string, unknown>): Record<string, unknown> {
   return stripHrefDeep(payload) as Record<string, unknown>;
+}
+
+function normalizeSort(sort?: string): string | undefined {
+  if (!sort) {
+    return sort;
+  }
+  const normalized = sort.trim().toLowerCase();
+  if (normalized === 'newest_first' || normalized === 'newest' || normalized === 'latest') {
+    return 'main_date_str desc';
+  }
+  if (normalized === 'oldest_first' || normalized === 'oldest' || normalized === 'earliest') {
+    return 'main_date_str asc';
+  }
+  return sort;
 }
 
 function stripHrefDeep(value: unknown): unknown {
