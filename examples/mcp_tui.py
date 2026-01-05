@@ -253,6 +253,7 @@ class FinnaTUI(App):
         self.model_option_values: set[str] = set()
         self.conversation_lines: list[str] = []
         self.response_lines: list[str] = []
+        self.message_history: list[object] = []
         self.current_task: asyncio.Task | None = None
         self.last_usage: tuple[int | None, int | None] | None = None
         self._init_lock = asyncio.Lock()
@@ -370,6 +371,7 @@ class FinnaTUI(App):
         if user_input.lower() == "/clear":
             self.conversation_lines.clear()
             self.response_lines.clear()
+            self.message_history = []
             log = self._get_log("#conversation")
             if log:
                 log.clear()
@@ -403,7 +405,11 @@ class FinnaTUI(App):
         result = None
         try:
             await self.server.__aenter__()
-            result = await self.agent.run(user_input, model_settings={"stream": False})
+            result = await self.agent.run(
+                user_input,
+                message_history=self.message_history,
+                model_settings={"stream": False},
+            )
         except asyncio.CancelledError:
             self._append_conversation("System: Request cancelled.", style="blue")
             return
@@ -414,6 +420,10 @@ class FinnaTUI(App):
             output = result.output if hasattr(result, "output") else str(result)
             self._append_conversation(f"Assistant: {output}", style="green")
             self.last_usage = _extract_usage(result)
+            try:
+                self.message_history = list(result.all_messages())
+            except Exception:
+                pass
         finally:
             if self.server:
                 await self._safe_close_server()
