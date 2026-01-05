@@ -54,6 +54,30 @@ def _save_history(entries: list[str]) -> None:
 
 _MODEL_CACHE: dict[str, object] = {"ts": 0.0, "data": []}
 _CACHE_PATH = os.path.join(os.path.dirname(__file__), ".openrouter_models_cache.json")
+_MODEL_PREFS_PATH = os.path.join(os.path.dirname(__file__), ".openrouter_model.json")
+
+
+def _load_saved_model() -> str | None:
+    try:
+        with open(_MODEL_PREFS_PATH, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+    if isinstance(payload, dict):
+        model = payload.get("model")
+        if isinstance(model, str) and model:
+            return model
+    return None
+
+
+def _save_selected_model(model_id: str) -> None:
+    try:
+        with open(_MODEL_PREFS_PATH, "w", encoding="utf-8") as handle:
+            json.dump({"model": model_id}, handle)
+    except Exception:
+        pass
 
 
 def _load_model_cache() -> None:
@@ -174,6 +198,9 @@ class FinnaTUI(App):
         yield Footer()
 
     async def on_mount(self) -> None:
+        saved_model = _load_saved_model()
+        if saved_model:
+            self.model = saved_model
         await self._ensure_agent()
         self.query_one("#model-select", Select).disabled = True
         self.query_one("#model-filter", Input).disabled = True
@@ -186,6 +213,11 @@ class FinnaTUI(App):
             selector.set_options(options)
             selector.disabled = False
             self.query_one("#model-filter", Input).disabled = False
+            if saved_model:
+                normalized = _normalize_openrouter_model(saved_model)
+                option_values = {option.value for option in selector.options}
+                if normalized in option_values:
+                    selector.value = normalized
         if self.question:
             await self._handle_user_input(self.question)
 
@@ -297,6 +329,7 @@ class FinnaTUI(App):
         if self.agent:
             self.agent.model = self.model
         conversation.write(f"System: Selected model {self.model}")
+        _save_selected_model(self.model)
         selector = self.query_one("#model-select", Select)
         if selector.value != chosen:
             try:

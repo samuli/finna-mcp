@@ -49,6 +49,30 @@ def _configure_history() -> callable | None:
 
 _MODEL_CACHE: dict[str, object] = {"ts": 0.0, "data": []}
 _CACHE_PATH = os.path.join(os.path.dirname(__file__), ".openrouter_models_cache.json")
+_MODEL_PREFS_PATH = os.path.join(os.path.dirname(__file__), ".openrouter_model.json")
+
+
+def _load_saved_model() -> str | None:
+    try:
+        with open(_MODEL_PREFS_PATH, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+    if isinstance(payload, dict):
+        model = payload.get("model")
+        if isinstance(model, str) and model:
+            return model
+    return None
+
+
+def _save_selected_model(model_id: str) -> None:
+    try:
+        with open(_MODEL_PREFS_PATH, "w", encoding="utf-8") as handle:
+            json.dump({"model": model_id}, handle)
+    except Exception:
+        pass
 
 
 def _load_model_cache() -> None:
@@ -127,6 +151,9 @@ def _normalize_openrouter_model(model_id: str) -> str:
 
 
 async def run_cli(question: str, mcp_url: str, model: str) -> None:
+    saved_model = _load_saved_model()
+    if saved_model:
+        model = saved_model
     instructions = (
         """You are a data assistant for Finna via MCP.
         Use the available MCP tools to search records and fetch metadata.
@@ -200,6 +227,7 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
                 if selection:
                     model = _normalize_openrouter_model(selection)
                     agent.model = model
+                    _save_selected_model(model)
                     print(f"Selected model: {model}")
                 continue
             if user_input.lower().startswith("/models"):
@@ -215,6 +243,7 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
                 if selected:
                     model = selected
                     agent.model = model
+                    _save_selected_model(model)
                     print(f"Selected model: {model}")
                 continue
             if user_input.lower() == "/clear":
