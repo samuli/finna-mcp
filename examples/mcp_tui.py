@@ -34,6 +34,38 @@ def _format_error(exc: Exception) -> str:
     return " | ".join(lines)
 
 
+def _extract_usage(result: object) -> tuple[int | None, int | None] | None:
+    usage = getattr(result, "usage", None)
+    if not usage:
+        return None
+    if isinstance(usage, dict):
+        in_tokens = (
+            usage.get("input_tokens")
+            or usage.get("prompt_tokens")
+            or usage.get("input")
+            or usage.get("prompt")
+        )
+        out_tokens = (
+            usage.get("output_tokens")
+            or usage.get("completion_tokens")
+            or usage.get("output")
+            or usage.get("completion")
+        )
+        return _coerce_tokens(in_tokens), _coerce_tokens(out_tokens)
+    in_tokens = getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", None)
+    out_tokens = getattr(usage, "output_tokens", None) or getattr(usage, "completion_tokens", None)
+    return _coerce_tokens(in_tokens), _coerce_tokens(out_tokens)
+
+
+def _coerce_tokens(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _load_history() -> list[str]:
     history_path = os.environ.get("FINNA_MCP_HISTORY", "~/.finna_mcp_history")
     history_file = os.path.expanduser(history_path)
@@ -221,6 +253,7 @@ class FinnaTUI(App):
         self.conversation_lines: list[str] = []
         self.response_lines: list[str] = []
         self.current_task: asyncio.Task | None = None
+        self.last_usage: tuple[int | None, int | None] | None = None
         self._init_lock = asyncio.Lock()
 
     def compose(self) -> ComposeResult:
@@ -364,6 +397,7 @@ class FinnaTUI(App):
         else:
             output = result.output if hasattr(result, "output") else str(result)
             self._append_conversation(f"Assistant: {output}", style="green")
+            self.last_usage = _extract_usage(result)
         finally:
             self.current_task = None
             self._set_status("Idle")
@@ -474,7 +508,14 @@ class FinnaTUI(App):
 
     def _set_status(self, text: str) -> None:
         try:
-            self.query_one("#status", Static).update(text)
+            usage = self.last_usage
+            if usage and (usage[0] is not None or usage[1] is not None):
+                in_tokens = usage[0] if usage[0] is not None else "?"
+                out_tokens = usage[1] if usage[1] is not None else "?"
+                suffix = f" | tokens in/out: {in_tokens}/{out_tokens}"
+            else:
+                suffix = ""
+            self.query_one("#status", Static).update(f"{text}{suffix}")
         except Exception:
             pass
 
