@@ -70,7 +70,8 @@ const ListToolsResponse = {
   tools: [
     {
       name: 'search_records',
-      description: 'Search Finna records with LLM-friendly structured filters.',
+      description:
+        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -105,7 +106,8 @@ const ListToolsResponse = {
     },
     {
       name: 'list_organizations',
-      description: 'List organizations/buildings using the Finna building facet.',
+      description:
+        'List organizations/buildings (e.g., libraries) using the Finna building facet.',
       inputSchema: {
         type: 'object',
         properties: {
