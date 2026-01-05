@@ -319,7 +319,31 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   });
 
   const payload = await fetchJson(url);
-  return json({ result: payload });
+  return json({ result: stripFacetHrefs(payload) });
+}
+
+function stripFacetHrefs(payload: Record<string, unknown>): Record<string, unknown> {
+  if (!payload.facets || !Array.isArray(payload.facets)) {
+    return payload;
+  }
+  const cleaned = payload.facets.map((facet) => {
+    if (!facet || typeof facet !== 'object') {
+      return facet;
+    }
+    const entries = (facet as { data?: unknown }).data;
+    if (!Array.isArray(entries)) {
+      return facet;
+    }
+    const updated = entries.map((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return entry;
+      }
+      const { href, ...rest } = entry as Record<string, unknown>;
+      return rest;
+    });
+    return { ...(facet as Record<string, unknown>), data: updated };
+  });
+  return { ...payload, facets: cleaned };
 }
 
 async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
