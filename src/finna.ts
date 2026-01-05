@@ -50,7 +50,7 @@ export function buildSearchUrl(params: SearchParams): string {
   if (params.page) {
     url.searchParams.set('page', String(params.page));
   }
-  if (params.limit) {
+  if (params.limit !== undefined) {
     url.searchParams.set('limit', String(params.limit));
   }
   if (params.sort) {
