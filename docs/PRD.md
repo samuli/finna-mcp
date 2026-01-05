@@ -86,7 +86,18 @@ Use these in `filters.include.format` when narrowing by type:
 ### Organization identifiers (working notes)
 - Use `list_organizations` and then pass the returned **building** values into `filters.include.building`.
 - Example building value: `0/URHEILUMUSEO/` (from `list_organizations`).
-- Organization **type** codes are not yet mapped; document once confirmed.
+
+### Organization sector/type (derive via Finna facet)
+- Finna exposes a hierarchical facet `sector_str_mv` for organization sector/type. This facet is listed among the hierarchical facets in the API docs. citeturn1search0turn3search4
+- Derive sector values dynamically (do not hard-code):  
+  `https://api.finna.fi/v1/search?lookfor=&facet[]=sector_str_mv&limit=0&lng=fi`  
+  Use returned `value` strings as filter values.
+- Keep only a minimal example in docs (e.g., one sector value) once verified from live API output.
+
+### When to drop facets (token control)
+- Default: do **not** request facets in `search_records`. Only include facets when explicitly needed (e.g., to discover building/format codes).
+- For `search_records` responses, strip `facets` from the returned payload unless the caller requested facets.
+- For `list_organizations`, keep facets (this tool exists purely to return facet values), but strip `href` and any unused fields.
 
 ### Open questions
 - Confirm where `record_format` is exposed (likely in `rawData`); use it to drive format-specific pruning.
