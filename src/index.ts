@@ -339,20 +339,19 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   }
   const url = buildFacetUrl({
     apiBase: env.FINNA_API_BASE,
-    lookfor,
+    lookfor: '',
     type,
     lng,
-    filters: normalizedFilters,
+    filters: undefined,
     facet: 'building',
   });
 
   const payload = await fetchJson(url);
   const cleaned = stripFacetHrefs(payload);
-  if (lookfor || normalizedFilters) {
-    const filtered = filterOrganizationsPayload(cleaned, lookfor, normalizedFilters);
-    if (filtered) {
-      return json({ result: filtered });
-    }
+  const filtered = filterOrganizationsPayload(cleaned, lookfor, normalizedFilters);
+  if (filtered) {
+    await writeOrganizationsCache(env, cacheKey, cleaned);
+    return json({ result: filtered });
   }
   if (!lookfor && !normalizedFilters) {
     await writeOrganizationsCache(env, cacheKey, cleaned);
