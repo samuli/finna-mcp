@@ -89,3 +89,5 @@ curl 'https://finna.fi/AJAX/JSON?method=getItemStatuses' \
 - Python CLI client (separate deps):
   - `pip install -r examples/requirements.txt`
   - `python examples/mcp_cli.py "find photos of helsinki"` (uses `MCP_URL` + `MODEL` env vars).
+- Python TUI client (curses, same deps):
+  - `python examples/mcp_tui.py`

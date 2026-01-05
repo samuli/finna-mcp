@@ -4,6 +4,8 @@ import io
 import json
 import os
 import sys
+import atexit
+import readline
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStreamableHTTP
@@ -16,6 +18,25 @@ def _configure_stdio() -> None:
         return
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+
+def _configure_history() -> None:
+    history_path = os.environ.get("FINNA_MCP_HISTORY", "~/.finna_mcp_history")
+    history_file = os.path.expanduser(history_path)
+    try:
+        readline.read_history_file(history_file)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        return
+
+    def save_history() -> None:
+        try:
+            readline.write_history_file(history_file)
+        except Exception:
+            pass
+
+    atexit.register(save_history)
 
 
 async def run_cli(question: str, mcp_url: str, model: str) -> None:
@@ -94,6 +115,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _configure_stdio()
+    _configure_history()
 
     question = " ".join(args.question).strip()
 
