@@ -69,6 +69,25 @@ curl 'https://finna.fi/AJAX/JSON?method=getItemStatuses' \
 - Provide opt-in flags for `fullRecord` and `rawData` with aggressive pruning.
 - Provide a dedicated `images` helper that expands `Cover/Show` relative paths to full URLs.
 
+### Common format codes (working list)
+Use these in `filters.include.format` when narrowing by type:
+- Book: `0/Book/`
+- Article: `0/Article/`
+- Journal: `0/Journal/`
+- Audio (generic): `0/Sound/`
+- Audio (music): `0/Sound/Music/`
+- Video: `0/Video/`
+- Image: `0/Image/`
+- Image (photo): `0/Image/Photo/`
+- Map: `0/Map/`
+- Manuscript: `0/Manuscript/`
+- Thesis/Dissertation: `0/Thesis/`
+
+### Organization identifiers (working notes)
+- Use `list_organizations` and then pass the returned **building** values into `filters.include.building`.
+- Example building value: `0/URHEILUMUSEO/` (from `list_organizations`).
+- Organization **type** codes are not yet mapped; document once confirmed.
+
 ### Open questions
 - Confirm where `record_format` is exposed (likely in `rawData`); use it to drive format-specific pruning.
 - Identify availability endpoint (if any) and whether it can be called uniformly across orgs.
