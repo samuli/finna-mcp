@@ -140,7 +140,7 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'get_record',
-          arguments: { ids: ['a.1'], includeFullRecord: true, includeRawData: true },
+          arguments: { ids: ['a.1'], includeRawData: true },
         },
       }),
     });

@@ -49,7 +49,6 @@ const GetRecordArgs = z.object({
   ids: z.array(z.string()).min(1),
   lng: z.string().optional(),
   fields: z.array(z.string()).optional(),
-  includeFullRecord: z.boolean().optional(),
   includeRawData: z.boolean().optional(),
   sampleLimit: z.number().int().min(1).max(5).optional(),
 });
@@ -98,7 +97,6 @@ const ListToolsResponse = {
           ids: { type: 'array', items: { type: 'string' } },
           lng: { type: 'string' },
           fields: { type: 'array', items: { type: 'string' } },
-          includeFullRecord: { type: 'boolean' },
           includeRawData: { type: 'boolean' },
           sampleLimit: { type: 'number' },
         },
@@ -276,11 +274,8 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const { ids, lng, fields, includeFullRecord, includeRawData, sampleLimit } = parsed.data;
+  const { ids, lng, fields, includeRawData, sampleLimit } = parsed.data;
   const selectedFields = fields ? [...fields] : [...DEFAULT_RECORD_FIELDS];
-  if (includeFullRecord) {
-    selectedFields.push('fullRecord');
-  }
   if (includeRawData) {
     selectedFields.push('rawData');
   }
