@@ -187,6 +187,14 @@ class FinnaTUI(App):
     #prompt {
       height: 3;
       border: solid $accent;
+      width: 1fr;
+    }
+    #prompt-row {
+      height: 3;
+    }
+    #prompt-row Button {
+      min-width: 8;
+      margin-left: 1;
     }
     """
 
@@ -208,6 +216,7 @@ class FinnaTUI(App):
         self.model_option_values: set[str] = set()
         self.conversation_lines: list[str] = []
         self.response_lines: list[str] = []
+        self.current_task: asyncio.Task | None = None
         self._init_lock = asyncio.Lock()
 
     def compose(self) -> ComposeResult:
@@ -231,7 +240,11 @@ class FinnaTUI(App):
         yield Static("Model (use /models to load)", id="model-label")
         yield Input(placeholder="Filter models...", id="model-filter")
         yield Select([], prompt="Select model", id="model-select")
-        yield Input(placeholder="Ask a question (/clear, /exit, /models[!], /model <id>)", id="prompt")
+        yield Horizontal(
+            Input(placeholder="Ask a question (/clear, /exit, /models[!], /model <id>)", id="prompt"),
+            Button("Stop", id="stop-run"),
+            id="prompt-row",
+        )
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -322,19 +335,31 @@ class FinnaTUI(App):
             return
 
         self._append_history(user_input)
-        await self._ask_agent(user_input)
+        if self.current_task and not self.current_task.done():
+            self._append_conversation(
+                "System: Request already in progress. Press Stop to cancel.",
+                style="blue",
+            )
+            return
+        self.current_task = asyncio.create_task(self._run_agent(user_input))
 
-    async def _ask_agent(self, user_input: str) -> None:
+    async def _run_agent(self, user_input: str) -> None:
         self._append_conversation(f"User: {user_input}", style="cyan")
         await self._ensure_agent()
         assert self.agent is not None
         try:
             result = await self.agent.run(user_input, model_settings={"stream": False})
+        except asyncio.CancelledError:
+            self._append_conversation("System: Request cancelled.", style="blue")
+            return
         except Exception as exc:
             self._append_conversation(f"Error: {_format_error(exc)}", style="red")
             return
-        output = result.output if hasattr(result, "output") else str(result)
-        self._append_conversation(f"Assistant: {output}", style="green")
+        else:
+            output = result.output if hasattr(result, "output") else str(result)
+            self._append_conversation(f"Assistant: {output}", style="green")
+        finally:
+            self.current_task = None
 
     async def _list_models(self, force: bool = False) -> None:
         self._append_conversation("System: Fetching OpenRouter models...", style="blue")
@@ -408,6 +433,13 @@ class FinnaTUI(App):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id or ""
+        if button_id == "stop-run":
+            if self.current_task and not self.current_task.done():
+                self.current_task.cancel()
+                self._append_conversation("System: Stopping request...", style="blue")
+            else:
+                self._append_conversation("System: No request in progress.", style="blue")
+            return
         if button_id == "conversation-copy":
             self._copy_to_clipboard("\n".join(self.conversation_lines))
             self._append_conversation("System: Copied conversation to clipboard.", style="blue")
@@ -478,6 +510,8 @@ class FinnaTUI(App):
             prompt.cursor_position = len(prompt.value)
 
     async def on_shutdown_request(self) -> None:
+        if self.current_task and not self.current_task.done():
+            self.current_task.cancel()
         if self.server:
             await self.server.__aexit__(None, None, None)
 
