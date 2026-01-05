@@ -84,7 +84,7 @@ describe('worker', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('lookfor=sibelius');
-    expect(calledUrl).toContain('sort=main_date_str%20desc');
+    expect(calledUrl).toContain('sort=main_date_str+desc');
     expect(calledUrl).toContain('filter%5B%5D=building%3A%221%2FKANSA%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=%7Eformat%3A%220%2FImage%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=%7Eformat%3A%221%2FImage%2FPhoto%2F%22');
@@ -181,7 +181,7 @@ describe('worker', () => {
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('facet%5B%5D=building');
     expect(calledUrl).toContain('limit=0');
-    expect(calledUrl).toContain('filter%5B%5D=building%3A%221%2FKANSA%2F%22');
+    // list_organizations always fetches the full facet list and filters locally.
   });
 
   it('get_record supports multiple ids and resource samples', async () => {
@@ -252,5 +252,79 @@ describe('worker', () => {
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
     expect(payload.result.resources[0].resources.length).toBe(2);
+  });
+
+  it('list_organizations_ui parses hierarchy from UI HTML', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    const fixture = JSON.stringify({
+      data: {
+        facets: {
+          building: {
+            html: `
+              <ul class="facet-tree">
+                <li class="facet-tree__parent">
+                  <span class="facet-tree__item-container">
+                    <span class="facet js-facet-item facetOR">
+                      <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%220%2FEepos%2F%22" data-title="Eepos-kirjastot" data-count="360571">
+                        <span class="facet-value icon-link__label">Eepos-kirjastot</span>
+                      </a>
+                    </span>
+                  </span>
+                  <ul>
+                    <li class="facet-tree__parent">
+                      <span class="facet-tree__item-container">
+                        <span class="facet js-facet-item facetOR">
+                          <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%221%2FEepos%2F19%2F%22" data-title="Seinäjoki" data-count="2947">
+                            <span class="facet-value icon-link__label">Seinäjoki</span>
+                          </a>
+                        </span>
+                      </span>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            `,
+          },
+        },
+      },
+    });
+    mockFetch.mockResolvedValueOnce(
+      new Response(fixture, { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: { name: 'list_organizations_ui', arguments: { lookfor: 'Seinäjoki' } },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    const payload = await response.json();
+    if (!payload.result) {
+      throw new Error(`Missing result in payload: ${JSON.stringify(payload)}`);
+    }
+    const tree = payload.result.facets?.building;
+    expect(Array.isArray(tree)).toBe(true);
+
+    const hasLabel = (nodes: any[], label: string): boolean => {
+      for (const node of nodes) {
+        if (!node) {
+          continue;
+        }
+        if (String(node.label) === label) {
+          return true;
+        }
+        if (Array.isArray(node.children) && hasLabel(node.children, label)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    expect(hasLabel(tree, 'Eepos-kirjastot')).toBe(true);
+    expect(hasLabel(tree, 'Seinäjoki')).toBe(true);
   });
 });

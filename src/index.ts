@@ -31,13 +31,14 @@ const CallToolSchema = z.object({
   arguments: z.record(z.unknown()).optional(),
 });
 
-const FilterSchema = z
+const StructuredFilterSchema = z
   .object({
     include: z.record(z.array(z.string())).optional(),
     any: z.record(z.array(z.string())).optional(),
     exclude: z.record(z.array(z.string())).optional(),
   })
-  .optional();
+  .passthrough();
+const FilterSchema = z.union([StructuredFilterSchema, z.record(z.unknown())]).optional();
 
 const SearchRecordsArgs = z.object({
   lookfor: z.string().default(''),
@@ -854,6 +855,18 @@ function parseFacetTreeFromHtml(html: string): UiFacetNode[] {
         if (countAttr && /^\d+$/.test(countAttr)) {
           node.count = node.count ?? Number(countAttr);
         }
+        const titleAttr = extractAttr(token, 'data-title');
+        if (titleAttr) {
+          node.label = node.label || decodeHtmlEntities(titleAttr);
+        }
+        const hrefAttr = extractAttr(token, 'href');
+        if (hrefAttr && !node.value) {
+          const decoded = decodeHtmlEntities(hrefAttr);
+          const extracted = extractBuildingValueFromHref(decoded);
+          if (extracted) {
+            node.value = extracted;
+          }
+        }
       }
       continue;
     }
@@ -897,6 +910,26 @@ function extractLabelAndCount(text: string): { label: string; count?: number } {
   const count = Number(last.replace(/\s+/g, ''));
   const label = cleaned.replace(last, '').replace(/\s+/g, ' ').trim();
   return Number.isFinite(count) ? { label, count } : { label: cleaned };
+}
+
+function extractBuildingValueFromHref(href: string): string | null {
+  try {
+    const url = new URL(href, 'https://finna.fi');
+    const filters = url.searchParams.getAll('filter[]');
+    for (const filter of filters) {
+      const match = filter.match(/building:"([^"]+)"/i);
+      if (match) {
+        return match[1];
+      }
+    }
+  } catch {
+    // ignore
+  }
+  const match = href.match(/building%3A%22([^%]+)%22/i);
+  if (match) {
+    return decodeURIComponent(match[1]);
+  }
+  return null;
 }
 
 async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
