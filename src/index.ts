@@ -12,10 +12,17 @@ type Env = {
   DB: D1Database;
   CACHE_BUCKET: R2Bucket;
   FINNA_API_BASE?: string;
+  FINNA_UI_BASE?: string;
   FINNA_MCP_DISABLE_CACHE?: string;
 };
 
-const toolNames = ['search_records', 'get_record', 'list_organizations', 'extract_resources'] as const;
+const toolNames = [
+  'search_records',
+  'get_record',
+  'list_organizations',
+  'list_organizations_ui',
+  'extract_resources',
+] as const;
 
 type ToolName = (typeof toolNames)[number];
 
@@ -59,6 +66,12 @@ const ListOrganizationsArgs = z.object({
   type: z.string().default('AllFields'),
   lng: z.string().optional(),
   filters: FilterSchema,
+});
+
+const ListOrganizationsUiArgs = z.object({
+  lookfor: z.string().default(''),
+  type: z.string().default('AllFields'),
+  lng: z.string().optional(),
 });
 
 const ExtractResourcesArgs = z.object({
@@ -133,6 +146,19 @@ const ListToolsResponse = {
       },
     },
     {
+      name: 'list_organizations_ui',
+      description:
+        'Experimental: fetches the organization hierarchy used by the Finna UI and returns a building tree (best-effort HTML parsing).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          lookfor: { type: 'string' },
+          type: { type: 'string' },
+          lng: { type: 'string' },
+        },
+      },
+    },
+    {
       name: 'extract_resources',
       description: 'Extract and summarize resource links for record ids.',
       inputSchema: {
@@ -194,6 +220,8 @@ export default {
             return await handleGetRecord(env, args);
           case 'list_organizations':
             return await handleListOrganizations(env, args);
+          case 'list_organizations_ui':
+            return await handleListOrganizationsUi(env, args);
           case 'extract_resources':
             return await handleExtractResources(env, args);
         }
@@ -365,6 +393,47 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
     }
   }
   return json({ result: cleaned });
+}
+
+async function handleListOrganizationsUi(env: Env, args: unknown): Promise<Response> {
+  const parsed = ListOrganizationsUiArgs.safeParse(args ?? {});
+  if (!parsed.success) {
+    return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
+  }
+  const { lookfor, type, lng } = parsed.data;
+  const uiBase = env.FINNA_UI_BASE ?? 'https://finna.fi';
+  const url = new URL('/AJAX/JSON', uiBase);
+  url.searchParams.set('lookfor', lookfor);
+  url.searchParams.set('type', type);
+  url.searchParams.set('method', 'getSideFacets');
+  url.searchParams.set('searchClassId', 'Solr');
+  url.searchParams.set('location', 'side');
+  url.searchParams.set('configIndex', '0');
+  url.searchParams.set('querySuppressed', '0');
+  url.searchParams.set('extraFields', 'handler,limit,selectedShards,sort,view');
+  url.searchParams.append('enabledFacets[]', 'building');
+  if (lng) {
+    url.searchParams.set('lng', lng);
+  }
+
+  const payload = await fetchJson(url.toString());
+  const html = findHtmlInAjaxPayload(payload);
+  if (!html) {
+    return json({
+      result: {
+        status: 'ERROR',
+        message: 'No HTML found in UI facet response.',
+      },
+    });
+  }
+  const tree = parseFacetTreeFromHtml(html);
+  return json({
+    result: {
+      status: 'OK',
+      facets: { building: tree },
+      rawHtmlLength: html.length,
+    },
+  });
 }
 
 function normalizeFilters(filters?: unknown): FilterInput | undefined {
@@ -687,6 +756,149 @@ function foldFinnish(value: string): string {
   return value.replace(/[äÄ]/g, 'a').replace(/[öÖ]/g, 'o').replace(/[åÅ]/g, 'a');
 }
 
+function findHtmlInAjaxPayload(payload: Record<string, unknown>): string | null {
+  const candidates: string[] = [];
+  const queue: unknown[] = [payload];
+  while (queue.length > 0) {
+    const item = queue.shift();
+    if (!item) {
+      continue;
+    }
+    if (typeof item === 'string') {
+      if (item.includes('<') && item.length > 200) {
+        candidates.push(item);
+      }
+      continue;
+    }
+    if (Array.isArray(item)) {
+      queue.push(...item);
+      continue;
+    }
+    if (typeof item === 'object') {
+      for (const value of Object.values(item as Record<string, unknown>)) {
+        queue.push(value);
+      }
+    }
+  }
+  if (candidates.length === 0) {
+    return null;
+  }
+  candidates.sort((a, b) => b.length - a.length);
+  return candidates[0];
+}
+
+type UiFacetNode = {
+  label: string;
+  value?: string;
+  count?: number;
+  children?: UiFacetNode[];
+};
+
+function parseFacetTreeFromHtml(html: string): UiFacetNode[] {
+  const tokens = html.match(/<[^>]+>|[^<]+/g) ?? [];
+  const stack: Array<{ node: UiFacetNode; text: string[] }> = [];
+  const roots: UiFacetNode[] = [];
+
+  const pushNode = (node: UiFacetNode) => {
+    if (stack.length === 0) {
+      roots.push(node);
+    } else {
+      const parent = stack[stack.length - 1].node;
+      if (!parent.children) {
+        parent.children = [];
+      }
+      parent.children.push(node);
+    }
+  };
+
+  for (const token of tokens) {
+    if (token.startsWith('<')) {
+      const lower = token.toLowerCase();
+      if (lower.startsWith('<li')) {
+        const node: UiFacetNode = { label: '' };
+        const value =
+          extractAttr(token, 'data-facet-value') ?? extractAttr(token, 'data-value');
+        if (value) {
+          node.value = value;
+        }
+        const countAttr = extractAttr(token, 'data-count');
+        if (countAttr && /^\d+$/.test(countAttr)) {
+          node.count = Number(countAttr);
+        }
+        stack.push({ node, text: [] });
+        continue;
+      }
+      if (lower.startsWith('</li')) {
+        const item = stack.pop();
+        if (item) {
+          const combined = decodeHtmlEntities(item.text.join(' '));
+          const { label, count } = extractLabelAndCount(combined);
+          item.node.label = item.node.label || label;
+          if (count !== undefined && item.node.count === undefined) {
+            item.node.count = count;
+          }
+          if (item.node.label || (item.node.children && item.node.children.length > 0)) {
+            pushNode(item.node);
+          }
+        }
+        continue;
+      }
+      if (stack.length > 0) {
+        const node = stack[stack.length - 1].node;
+        const value =
+          extractAttr(token, 'data-facet-value') ?? extractAttr(token, 'data-value');
+        if (value) {
+          node.value = node.value ?? value;
+        }
+        const countAttr = extractAttr(token, 'data-count');
+        if (countAttr && /^\d+$/.test(countAttr)) {
+          node.count = node.count ?? Number(countAttr);
+        }
+      }
+      continue;
+    }
+    if (stack.length > 0) {
+      const text = token.replace(/\s+/g, ' ').trim();
+      if (text) {
+        stack[stack.length - 1].text.push(text);
+      }
+    }
+  }
+
+  return roots;
+}
+
+function extractAttr(tag: string, name: string): string | null {
+  const pattern = new RegExp(`${name}=["']([^"']+)["']`, 'i');
+  const match = tag.match(pattern);
+  return match ? match[1] : null;
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function extractLabelAndCount(text: string): { label: string; count?: number } {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return { label: '' };
+  }
+  const matches = cleaned.match(/\b\d[\d\s]*\b/g) ?? [];
+  if (matches.length === 0) {
+    return { label: cleaned };
+  }
+  const last = matches[matches.length - 1];
+  const count = Number(last.replace(/\s+/g, ''));
+  const label = cleaned.replace(last, '').replace(/\s+/g, ' ').trim();
+  return Number.isFinite(count) ? { label, count } : { label: cleaned };
+}
+
 async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
   const parsed = ExtractResourcesArgs.safeParse(args);
   if (!parsed.success) {
@@ -858,6 +1070,8 @@ async function dispatchTool(
       return await unwrapResult(handleGetRecord(env, args));
     case 'list_organizations':
       return await unwrapResult(handleListOrganizations(env, args));
+    case 'list_organizations_ui':
+      return await unwrapResult(handleListOrganizationsUi(env, args));
     case 'extract_resources':
       return await unwrapResult(handleExtractResources(env, args));
   }
