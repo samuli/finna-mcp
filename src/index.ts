@@ -134,7 +134,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Record fields to return. Defaults include: id, title, formats, languages, year, images, onlineUrls, urls, contributors. Add "buildings" explicitly if you need organization hierarchy. Use fields to request raw authors/nonPresenterAuthors.',
+              'Record fields to return. Defaults include: id, title, formats, languages, year, images, onlineUrls, urls, recordUrl, contributors. Add "buildings" explicitly if you need organization hierarchy. Use fields to request raw authors/nonPresenterAuthors.',
           },
           sampleLimit: { type: 'number' },
         },
@@ -152,7 +152,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Record fields to return. Defaults include: id, title, formats, buildings, subjects, genres, series, authors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, summary, measurements, contributors. Use fields to request raw nonPresenterAuthors.',
+              'Record fields to return. Defaults include: id, title, formats, buildings, subjects, genres, series, authors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements, contributors. Use fields to request raw nonPresenterAuthors.',
           },
           includeRawData: { type: 'boolean' },
           sampleLimit: { type: 'number' },
@@ -254,6 +254,7 @@ const DEFAULT_SEARCH_FIELDS = [
   'images',
   'onlineUrls',
   'urls',
+  'recordUrl',
 ];
 
 const DEFAULT_RECORD_FIELDS = [
@@ -271,6 +272,7 @@ const DEFAULT_RECORD_FIELDS = [
   'images',
   'onlineUrls',
   'urls',
+  'recordUrl',
   'summary',
   'measurements',
 ];
