@@ -108,8 +108,22 @@ def _select_model(models: list[dict]) -> str | None:
     except ValueError:
         return choice
     if 1 <= index <= min(25, len(models)):
-        return models[index - 1].get("id")
+        model_id = models[index - 1].get("id")
+        if model_id:
+            return f"openrouter:{model_id}"
     return None
+
+
+def _normalize_openrouter_model(model_id: str) -> str:
+    if model_id.startswith("openrouter:"):
+        return model_id
+    if not model_id:
+        return model_id
+    _load_model_cache()
+    models = _MODEL_CACHE.get("data", [])
+    if isinstance(models, list) and any(item.get("id") == model_id for item in models):
+        return f"openrouter:{model_id}"
+    return model_id
 
 
 async def run_cli(question: str, mcp_url: str, model: str) -> None:
@@ -180,7 +194,7 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
             if user_input.lower().startswith("/model "):
                 selection = user_input.split(" ", 1)[1].strip()
                 if selection:
-                    model = selection
+                    model = _normalize_openrouter_model(selection)
                     agent.model = model
                     print(f"Selected model: {model}")
                 continue

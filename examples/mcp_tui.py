@@ -109,6 +109,18 @@ def _format_model_list(models: list[dict]) -> list[str]:
     return lines
 
 
+def _normalize_openrouter_model(model_id: str) -> str:
+    if model_id.startswith("openrouter:"):
+        return model_id
+    if not model_id:
+        return model_id
+    _load_model_cache()
+    models = _MODEL_CACHE.get("data", [])
+    if isinstance(models, list) and any(item.get("id") == model_id for item in models):
+        return f"openrouter:{model_id}"
+    return model_id
+
+
 class FinnaTUI(App):
     CSS = """
     Screen {
@@ -281,10 +293,10 @@ class FinnaTUI(App):
         if not chosen:
             conversation.write("System: Invalid model selection.")
             return
-        self.model = chosen
+        self.model = _normalize_openrouter_model(chosen)
         if self.agent:
-            self.agent.model = chosen
-        conversation.write(f"System: Selected model {chosen}")
+            self.agent.model = self.model
+        conversation.write(f"System: Selected model {self.model}")
         selector = self.query_one("#model-select", Select)
         if selector.value != chosen:
             try:
