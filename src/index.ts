@@ -83,6 +83,7 @@ const ListOrganizationsArgs = z.object({
   type: z.string().default('AllFields'),
   lng: z.string().optional(),
   filters: FilterSchema,
+  max_depth: z.number().int().min(1).max(6).optional(),
 });
 
 const ExtractResourcesArgs = z.object({
@@ -171,6 +172,11 @@ const ListToolsResponse = {
           type: { type: 'string' },
           lng: { type: 'string' },
           filters: { type: 'object' },
+          max_depth: {
+            type: 'number',
+            description:
+              'Optional max depth for returned hierarchy (1-6). Overrides default pruning behavior when set.',
+          },
         },
       },
     },
@@ -384,7 +390,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const { lookfor, type, lng, filters } = parsed.data;
+  const { lookfor, type, lng, filters, max_depth } = parsed.data;
   const normalizedFilters = normalizeFilters(filters);
   const cacheLng = lng ?? 'fi';
   const cacheKey = buildOrganizationsCacheKey(cacheLng, type);
@@ -394,7 +400,14 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
       : await readOrganizationsCache(env, cacheKey);
   if (cached) {
     if (!lookfor && !normalizedFilters) {
-      return json({ result: pruneOrganizationsDepth(cached, 2, 'unfiltered') });
+      const depth = max_depth ?? 2;
+      return json({
+        result: pruneOrganizationsDepth(
+          cached,
+          depth,
+          max_depth ? 'max_depth' : 'unfiltered',
+        ),
+      });
     }
     const filtered = filterOrganizationsPayload(cached, lookfor, normalizedFilters);
     if (filtered) {
@@ -406,9 +419,11 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   if (env.FINNA_MCP_DISABLE_CACHE !== '1') {
     await writeOrganizationsCache(env, cacheKey, uiPayload);
   }
-  const result = filtered ?? uiPayload;
-  if (!lookfor && !normalizedFilters) {
-    return json({ result: pruneOrganizationsDepth(result, 2, 'unfiltered') });
+  let result = filtered ?? uiPayload;
+  if (max_depth) {
+    result = pruneOrganizationsDepth(result, max_depth, 'max_depth');
+  } else if (!lookfor && !normalizedFilters) {
+    result = pruneOrganizationsDepth(result, 2, 'unfiltered');
   }
   return json({ result });
 }
