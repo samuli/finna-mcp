@@ -16,6 +16,8 @@ type Env = {
 
 const toolNames = ['search_records', 'get_record', 'list_organizations', 'extract_resources'] as const;
 
+type ToolName = (typeof toolNames)[number];
+
 const CallToolSchema = z.object({
   name: z.enum(toolNames),
   arguments: z.record(z.unknown()).optional(),
@@ -149,6 +151,10 @@ export default {
         status: 400,
         headers: { 'content-type': 'application/json' },
       });
+    }
+
+    if (isJsonRpc(body)) {
+      return await handleJsonRpc(body, env);
     }
 
     if (body.method === 'listTools') {
@@ -368,4 +374,133 @@ function json(payload: unknown, status = 200): Response {
 function getRecords(payload: Record<string, unknown>): Record<string, unknown>[] {
   const records = payload.records;
   return Array.isArray(records) ? (records as Record<string, unknown>[]) : [];
+}
+
+type JsonRpcRequest = {
+  jsonrpc: string;
+  id?: string | number | null;
+  method: string;
+  params?: Record<string, unknown> | null;
+};
+
+const SERVER_INFO = {
+  name: 'finna-mcp',
+  version: '0.1.0',
+};
+
+const MCP_PROTOCOL_VERSION = '2025-06-18';
+
+async function handleJsonRpc(body: JsonRpcRequest, env: Env): Promise<Response> {
+  const { id, method } = body;
+
+  if (method === 'initialize') {
+    return json(
+      jsonRpcResult(id, {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: { tools: {} },
+        serverInfo: SERVER_INFO,
+        instructions:
+          'Finna MCP server. Use tools/list and tools/call to search records and fetch metadata.',
+      }),
+    );
+  }
+
+  if (method === 'notifications/initialized') {
+    return new Response(null, { status: 204 });
+  }
+
+  if (method === 'tools/list') {
+    return json(jsonRpcResult(id, ListToolsResponse));
+  }
+
+  if (method === 'tools/call') {
+    const params = body.params ?? {};
+    const parsed = CallToolSchema.safeParse(params);
+    if (!parsed.success) {
+      return json(
+        jsonRpcError(id, -32602, 'Invalid params', parsed.error.format()),
+        400,
+      );
+    }
+
+    const { name, arguments: args } = parsed.data;
+    if (!toolNames.includes(name)) {
+      return json(jsonRpcError(id, -32601, 'Method not found'), 404);
+    }
+
+    try {
+      const result = await dispatchTool(name, args, env);
+      return json(
+        jsonRpcResult(id, {
+          content: [{ type: 'text', text: 'OK' }],
+          structuredContent: result,
+          isError: false,
+        }),
+      );
+    } catch (error) {
+      return json(
+        jsonRpcResult(id, {
+          content: [{ type: 'text', text: errorMessage(error) }],
+          structuredContent: { error: 'upstream_error', message: errorMessage(error) },
+          isError: true,
+        }),
+        502,
+      );
+    }
+  }
+
+  return json(jsonRpcError(id, -32601, 'Method not found'), 404);
+}
+
+function isJsonRpc(body: unknown): body is JsonRpcRequest {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    'jsonrpc' in body &&
+    (body as { jsonrpc?: unknown }).jsonrpc === '2.0' &&
+    'method' in body
+  );
+}
+
+function jsonRpcResult(id: JsonRpcRequest['id'], result: unknown) {
+  return {
+    jsonrpc: '2.0',
+    id: id ?? null,
+    result,
+  };
+}
+
+function jsonRpcError(id: JsonRpcRequest['id'], code: number, message: string, data?: unknown) {
+  return {
+    jsonrpc: '2.0',
+    id: id ?? null,
+    error: {
+      code,
+      message,
+      data,
+    },
+  };
+}
+
+async function dispatchTool(
+  name: ToolName,
+  args: Record<string, unknown> | undefined,
+  env: Env,
+): Promise<Record<string, unknown>> {
+  switch (name) {
+    case 'search_records':
+      return await unwrapResult(handleSearchRecords(env, args));
+    case 'get_record':
+      return await unwrapResult(handleGetRecord(env, args));
+    case 'list_organizations':
+      return await unwrapResult(handleListOrganizations(env, args));
+    case 'extract_resources':
+      return await unwrapResult(handleExtractResources(env, args));
+  }
+}
+
+async function unwrapResult(responsePromise: Promise<Response>): Promise<Record<string, unknown>> {
+  const response = await responsePromise;
+  const payload = (await response.json()) as Record<string, unknown>;
+  return payload.result as Record<string, unknown>;
 }

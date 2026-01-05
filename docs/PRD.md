@@ -86,3 +86,6 @@ curl 'https://finna.fi/AJAX/JSON?method=getItemStatuses' \
 - `npm run test` runs unit tests (no network).
 - `npm run test:integration` runs live integration tests against local wrangler dev server.
   - Override target with `FINNA_MCP_BASE_URL=http://127.0.0.1:8787/mcp`.
+- Python CLI client (separate deps):
+  - `pip install -r examples/requirements.txt`
+  - `python examples/mcp_cli.py "find photos of helsinki"` (uses `MCP_URL` + `MODEL` env vars).
