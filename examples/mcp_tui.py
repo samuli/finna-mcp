@@ -179,6 +179,7 @@ class FinnaTUI(App):
         self.history_entries = _load_history()
         self.history_index = len(self.history_entries)
         self.model_options: list[dict] = []
+        self.model_option_values: set[str] = set()
         self._init_lock = asyncio.Lock()
 
     def compose(self) -> ComposeResult:
@@ -211,12 +212,12 @@ class FinnaTUI(App):
             options = self._build_model_options(self.model_options, query="")
             selector = self.query_one("#model-select", Select)
             selector.set_options(options)
+            self.model_option_values = {value for value, _ in options}
             selector.disabled = False
             self.query_one("#model-filter", Input).disabled = False
             if saved_model:
                 normalized = _normalize_openrouter_model(saved_model)
-                option_values = {option.value for option in selector.options}
-                if normalized in option_values:
+                if normalized in self.model_option_values:
                     selector.value = normalized
         if self.question:
             await self._handle_user_input(self.question)
@@ -308,6 +309,7 @@ class FinnaTUI(App):
         options = self._build_model_options(models, query="")
         selector = self.query_one("#model-select", Select)
         selector.set_options(options)
+        self.model_option_values = {value for value, _ in options}
         selector.disabled = False
         self.query_one("#model-filter", Input).disabled = False
 
@@ -332,11 +334,7 @@ class FinnaTUI(App):
         _save_selected_model(self.model)
         selector = self.query_one("#model-select", Select)
         if selector.value != chosen:
-            try:
-                option_values = {option.value for option in selector.options}
-            except Exception:
-                option_values = set()
-            if chosen in option_values:
+            if chosen in self.model_option_values:
                 selector.value = chosen
 
     def _append_history(self, user_input: str) -> None:
@@ -365,6 +363,7 @@ class FinnaTUI(App):
         options = self._build_model_options(self.model_options, query=event.value)
         selector = self.query_one("#model-select", Select)
         selector.set_options(options)
+        self.model_option_values = {value for value, _ in options}
 
     def _build_model_options(self, models: list[dict], query: str) -> list[tuple[str, str]]:
         query = query.strip().lower()
