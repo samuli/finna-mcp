@@ -71,7 +71,7 @@ const ListToolsResponse = {
     {
       name: 'search_records',
       description:
-        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead. lookfor is a Lucene search over limited metadata fields; use lookfor="" or "*" when you only need counts by filters. To count records, set limit=0 and read resultCount. For books: use filters.include.format=["0/Book/"] (format codes) and a building filter from list_organizations. Sort options: "relevance,id asc" (default), "main_date_str desc" (year newest), "main_date_str asc" (year oldest), "last_indexed desc", "first_indexed desc", "callnumber,id asc", "author,id asc", "title,id asc".',
+        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead. lookfor uses Solr/Lucene-style query syntax over limited metadata fields; use lookfor="" or "*" when you only need counts by filters. To count records, set limit=0 and read resultCount. For books: use filters.include.format=["0/Book/"] (format codes) and a building filter from list_organizations. Sort options: "relevance,id asc" (default), "main_date_str desc" (year newest), "main_date_str asc" (year oldest), "last_indexed desc", "first_indexed desc", "callnumber,id asc", "author,id asc", "title,id asc".',
       inputSchema: {
         type: 'object',
         properties: {
