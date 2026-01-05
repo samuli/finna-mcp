@@ -8,6 +8,7 @@ import os
 import sys
 import textwrap
 import readline
+import urllib.request
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStreamableHTTP
@@ -39,6 +40,57 @@ def _configure_history() -> None:
             pass
 
     atexit.register(save_history)
+
+
+def _load_history() -> list[str]:
+    history_path = os.environ.get("FINNA_MCP_HISTORY", "~/.finna_mcp_history")
+    history_file = os.path.expanduser(history_path)
+    entries: list[str] = []
+    try:
+        with open(history_file, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.rstrip("\n")
+                if line:
+                    entries.append(line)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        return []
+    return entries
+
+
+def _save_history(entries: list[str]) -> None:
+    history_path = os.environ.get("FINNA_MCP_HISTORY", "~/.finna_mcp_history")
+    history_file = os.path.expanduser(history_path)
+    try:
+        with open(history_file, "w", encoding="utf-8") as handle:
+            for entry in entries[-1000:]:
+                handle.write(f"{entry}\n")
+    except Exception:
+        pass
+
+
+def _fetch_openrouter_models() -> list[dict]:
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    url = "https://openrouter.ai/api/v1/models"
+    headers = {"accept": "application/json"}
+    if api_key:
+        headers["authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=15) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return payload.get("data", [])
+
+
+def _format_model_list(models: list[dict]) -> list[str]:
+    if not models:
+        return ["System: no models returned from OpenRouter."]
+    models = sorted(models, key=lambda item: item.get("name", ""))
+    lines = ["System: OpenRouter models (first 25):"]
+    for idx, item in enumerate(models[:25], start=1):
+        lines.append(f"{idx:2d}. {item.get('id')} - {item.get('name')}")
+    lines.append("System: select with /model <number|id>.")
+    return lines
 
 
 def _wrap_lines(lines, width):
@@ -132,20 +184,52 @@ def run_tui(question: str, mcp_url: str, model: str) -> None:
         input_win.noutrefresh()
         curses.doupdate()
 
-    def prompt_input(stdscr) -> str:
+    def prompt_input(stdscr, history_entries: list[str]) -> str:
         input_win = stdscr.derwin(3, stdscr.getmaxyx()[1], stdscr.getmaxyx()[0] - 3, 0)
         input_win.erase()
         input_win.box()
         input_win.addstr(0, 2, " Input ")
         input_win.addstr(1, 1, "> ")
         input_win.refresh()
-        curses.echo()
-        try:
-            value = input_win.getstr(1, 3).decode("utf-8")
-        except Exception:
-            value = ""
-        curses.noecho()
-        return value.strip()
+        input_win.keypad(True)
+        buffer: list[str] = []
+        history_index = len(history_entries)
+        cursor_x = 3
+        while True:
+            input_win.move(1, cursor_x)
+            ch = input_win.getch()
+            if ch in (curses.KEY_ENTER, 10, 13):
+                break
+            if ch in (curses.KEY_BACKSPACE, 127, 8):
+                if buffer:
+                    buffer.pop()
+                    cursor_x = max(3, cursor_x - 1)
+                    input_win.move(1, cursor_x)
+                    input_win.delch()
+                continue
+            if ch == curses.KEY_UP:
+                if history_entries:
+                    history_index = max(0, history_index - 1)
+                    buffer = list(history_entries[history_index])
+            elif ch == curses.KEY_DOWN:
+                if history_entries:
+                    history_index = min(len(history_entries), history_index + 1)
+                    if history_index == len(history_entries):
+                        buffer = []
+                    else:
+                        buffer = list(history_entries[history_index])
+            elif 32 <= ch <= 126:
+                buffer.append(chr(ch))
+            else:
+                continue
+
+            input_win.move(1, 3)
+            input_win.clrtoeol()
+            input_win.addstr(1, 3, "".join(buffer))
+            cursor_x = 3 + len(buffer)
+            input_win.refresh()
+
+        return "".join(buffer).strip()
 
     def run_with_history(user_input: str) -> None:
         nonlocal history
@@ -160,24 +244,55 @@ def run_tui(question: str, mcp_url: str, model: str) -> None:
         output = result.output if hasattr(result, "output") else str(result)
         conversation.append(f"Assistant: {output}")
 
+    model_options: list[dict] = []
+
     def tui_main(stdscr):
         curses.curs_set(1)
         stdscr.nodelay(False)
+        history_entries = _load_history()
         if question:
             run_with_history(question)
         while True:
             render(stdscr)
-            user_input = prompt_input(stdscr)
+            user_input = prompt_input(stdscr, history_entries)
             if not user_input:
                 continue
             if user_input.lower() == "/exit":
                 break
+            if user_input.lower() == "/models":
+                conversation.append("System: fetching OpenRouter models...")
+                render(stdscr)
+                try:
+                    model_options[:] = _fetch_openrouter_models()
+                    conversation.extend(_format_model_list(model_options))
+                except Exception as exc:
+                    conversation.append(f"System: failed to fetch models: {exc}")
+                continue
+            if user_input.lower().startswith("/model "):
+                selection = user_input.split(" ", 1)[1].strip()
+                if not selection:
+                    continue
+                chosen = None
+                if selection.isdigit() and model_options:
+                    index = int(selection)
+                    if 1 <= index <= min(25, len(model_options)):
+                        chosen = model_options[index - 1].get("id")
+                else:
+                    chosen = selection
+                if chosen:
+                    agent.model = chosen
+                    conversation.append(f"System: selected model {chosen}")
+                else:
+                    conversation.append("System: invalid model selection.")
+                continue
             if user_input.lower() == "/clear":
                 conversation.clear()
                 mcp_calls.clear()
                 mcp_responses.clear()
                 history.clear()
                 continue
+            history_entries.append(user_input)
+            _save_history(history_entries)
             run_with_history(user_input)
 
     try:

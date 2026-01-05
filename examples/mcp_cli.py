@@ -6,6 +6,7 @@ import os
 import sys
 import atexit
 import readline
+import urllib.request
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStreamableHTTP
@@ -20,15 +21,20 @@ def _configure_stdio() -> None:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 
-def _configure_history() -> None:
+def _configure_history() -> callable | None:
     history_path = os.environ.get("FINNA_MCP_HISTORY", "~/.finna_mcp_history")
     history_file = os.path.expanduser(history_path)
+    try:
+        readline.set_auto_history(True)
+        readline.set_history_length(1000)
+    except Exception:
+        pass
     try:
         readline.read_history_file(history_file)
     except FileNotFoundError:
         pass
     except Exception:
-        return
+        return None
 
     def save_history() -> None:
         try:
@@ -37,6 +43,38 @@ def _configure_history() -> None:
             pass
 
     atexit.register(save_history)
+    return save_history
+
+
+def _fetch_openrouter_models() -> list[dict]:
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    url = "https://openrouter.ai/api/v1/models"
+    headers = {"accept": "application/json"}
+    if api_key:
+        headers["authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=15) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return payload.get("data", [])
+
+
+def _select_model(models: list[dict]) -> str | None:
+    if not models:
+        return None
+    models = sorted(models, key=lambda item: item.get("name", ""))
+    print("\nOpenRouter models (showing first 25):")
+    for idx, item in enumerate(models[:25], start=1):
+        print(f"{idx:2d}. {item.get('id')} - {item.get('name')}")
+    choice = input("Select model number (or press Enter to cancel): ").strip()
+    if not choice:
+        return None
+    try:
+        index = int(choice)
+    except ValueError:
+        return choice
+    if 1 <= index <= min(25, len(models)):
+        return models[index - 1].get("id")
+    return None
 
 
 async def run_cli(question: str, mcp_url: str, model: str) -> None:
@@ -97,16 +135,39 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
             await run_with_history(question)
 
         while True:
-            user_input = input("\nAsk a question (/clear to reset, /exit to quit): ").strip()
+            user_input = input(
+                "\nAsk a question (/clear, /exit, /models, /model <id>): "
+            ).strip()
             if not user_input:
                 continue
             if user_input.lower() == "/exit":
                 break
+            if user_input.lower().startswith("/model "):
+                selection = user_input.split(" ", 1)[1].strip()
+                if selection:
+                    model = selection
+                    agent.model = model
+                    print(f"Selected model: {model}")
+                continue
+            if user_input.lower() == "/models":
+                try:
+                    models = _fetch_openrouter_models()
+                except Exception as exc:
+                    print(f"\nERROR: failed to fetch OpenRouter models: {exc}")
+                    continue
+                selected = _select_model(models)
+                if selected:
+                    model = selected
+                    agent.model = model
+                    print(f"Selected model: {model}")
+                continue
             if user_input.lower() == "/clear":
                 history = []
                 print("History cleared.")
                 continue
             await run_with_history(user_input)
+            if save_history:
+                save_history()
 
 
 def main() -> None:
@@ -115,7 +176,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _configure_stdio()
-    _configure_history()
+    save_history = _configure_history()
 
     question = " ".join(args.question).strip()
 
