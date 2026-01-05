@@ -321,12 +321,21 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   const enriched =
     limit === 0
       ? []
-      : records.map((record) => enrichRecordResources(record, sampleLimit ?? 3));
+      : records.map((record) =>
+          addRecordPageUrl(
+            enrichRecordResources(record, sampleLimit ?? 3),
+            env.FINNA_UI_BASE,
+          ),
+        );
+  const cleaned =
+    fields && !fields.includes('recordUrl')
+      ? enriched.map((record) => stripRecordUrl(record))
+      : enriched;
 
   return json({
     result: {
       ...stripFacetsIfUnused(payload, facets),
-      records: enriched,
+      records: cleaned,
     },
   });
 }
@@ -352,13 +361,20 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   const payload = await fetchJson(url);
   const records = getRecords(payload);
   const enriched = records.map((record) =>
-    enrichRecordResources(record, sampleLimit ?? 5),
+    addRecordPageUrl(
+      enrichRecordResources(record, sampleLimit ?? 5),
+      env.FINNA_UI_BASE,
+    ),
   );
+  const cleaned =
+    fields && !fields.includes('recordUrl')
+      ? enriched.map((record) => stripRecordUrl(record))
+      : enriched;
 
   return json({
     result: {
       ...payload,
-      records: enriched,
+      records: cleaned,
     },
   });
 }
@@ -1035,6 +1051,39 @@ function json(payload: unknown, status = 200): Response {
 function getRecords(payload: Record<string, unknown>): Record<string, unknown>[] {
   const records = payload.records;
   return Array.isArray(records) ? (records as Record<string, unknown>[]) : [];
+}
+
+function addRecordPageUrl(
+  record: Record<string, unknown>,
+  uiBase?: string,
+): Record<string, unknown> {
+  if (!record || typeof record !== 'object') {
+    return record;
+  }
+  if (typeof record.recordUrl === 'string' && record.recordUrl) {
+    return record;
+  }
+  const id = record.id;
+  if (typeof id !== 'string' || !id) {
+    return record;
+  }
+  const base = uiBase ?? 'https://finna.fi';
+  const url = new URL(`/Record/${id}`, base).toString();
+  return {
+    ...record,
+    recordUrl: url,
+  };
+}
+
+function stripRecordUrl(record: Record<string, unknown>): Record<string, unknown> {
+  if (!record || typeof record !== 'object') {
+    return record;
+  }
+  if (!('recordUrl' in record)) {
+    return record;
+  }
+  const { recordUrl: _omit, ...rest } = record;
+  return rest;
 }
 
 type JsonRpcRequest = {
