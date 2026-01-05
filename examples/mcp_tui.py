@@ -268,7 +268,7 @@ class FinnaTUI(App):
         self.query_one("#model-filter", Input).disabled = False
 
     async def _select_model(self, selection: str) -> None:
-        if not selection:
+        if not selection or selection == "Select.BLANK":
             return
         chosen = None
         if selection.isdigit() and self.model_options:
@@ -279,7 +279,7 @@ class FinnaTUI(App):
             chosen = selection
         conversation = self.query_one("#conversation", Log)
         if not chosen:
-            conversation.write("[bold red]System:[/bold red] Invalid model selection.")
+            conversation.write("System: Invalid model selection.")
             return
         self.model = chosen
         if self.agent:
@@ -287,7 +287,12 @@ class FinnaTUI(App):
         conversation.write(f"System: Selected model {chosen}")
         selector = self.query_one("#model-select", Select)
         if selector.value != chosen:
-            selector.value = chosen
+            try:
+                option_values = {option.value for option in selector.options}
+            except Exception:
+                option_values = set()
+            if chosen in option_values:
+                selector.value = chosen
 
     def _append_history(self, user_input: str) -> None:
         self.history_entries.append(user_input)
@@ -303,7 +308,7 @@ class FinnaTUI(App):
     async def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id != "model-select":
             return
-        if not event.value:
+        if not event.value or event.value is Select.BLANK or str(event.value) == "Select.BLANK":
             return
         await self._select_model(str(event.value))
 
