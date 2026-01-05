@@ -202,6 +202,8 @@ class FinnaTUI(App):
         saved_model = _load_saved_model()
         if saved_model:
             self.model = saved_model
+            conversation = self.query_one("#conversation", RichLog)
+            conversation.write(f"System: Restored model {self.model}")
         await self._ensure_agent()
         self.query_one("#model-select", Select).disabled = True
         self.query_one("#model-filter", Input).disabled = True
