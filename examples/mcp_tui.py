@@ -165,6 +165,15 @@ class FinnaTUI(App):
         await self._ensure_agent()
         self.query_one("#model-select", Select).disabled = True
         self.query_one("#model-filter", Input).disabled = True
+        _load_model_cache()
+        cached_models = _MODEL_CACHE.get("data", [])
+        if isinstance(cached_models, list) and cached_models:
+            self.model_options = cached_models
+            options = self._build_model_options(self.model_options, query="")
+            selector = self.query_one("#model-select", Select)
+            selector.set_options(options)
+            selector.disabled = False
+            self.query_one("#model-filter", Input).disabled = False
         if self.question:
             await self._handle_user_input(self.question)
 
