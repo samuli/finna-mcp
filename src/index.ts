@@ -35,7 +35,7 @@ const SearchRecordsArgs = z.object({
   lookfor: z.string().default(''),
   type: z.string().default('AllFields'),
   page: z.number().int().min(1).optional(),
-  limit: z.number().int().min(1).max(100).optional(),
+  limit: z.number().int().min(0).max(100).optional(),
   sort: z.string().optional(),
   lng: z.string().optional(),
   filters: FilterSchema,
@@ -565,18 +565,20 @@ async function handleJsonRpc(body: JsonRpcRequest, env: Env): Promise<Response> 
 
     try {
       const result = await dispatchTool(name, args, env);
+      const contentText = JSON.stringify(result ?? {});
       return json(
         jsonRpcResult(id, {
-          content: [{ type: 'text', text: 'OK' }],
+          content: [{ type: 'text', text: contentText }],
           structuredContent: result,
           isError: false,
         }),
       );
     } catch (error) {
+      const message = errorMessage(error);
       return json(
         jsonRpcResult(id, {
-          content: [{ type: 'text', text: errorMessage(error) }],
-          structuredContent: { error: 'upstream_error', message: errorMessage(error) },
+          content: [{ type: 'text', text: message }],
+          structuredContent: { error: 'upstream_error', message },
           isError: true,
         }),
         502,
