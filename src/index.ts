@@ -12,6 +12,7 @@ type Env = {
   DB: D1Database;
   CACHE_BUCKET: R2Bucket;
   FINNA_API_BASE?: string;
+  FINNA_MCP_DISABLE_CACHE?: string;
 };
 
 const toolNames = ['search_records', 'get_record', 'list_organizations', 'extract_resources'] as const;
@@ -327,7 +328,10 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   const normalizedFilters = normalizeFilters(filters);
   const cacheLng = lng ?? 'fi';
   const cacheKey = buildOrganizationsCacheKey(cacheLng, type);
-  const cached = await readOrganizationsCache(env, cacheKey);
+  const cached =
+    env.FINNA_MCP_DISABLE_CACHE === '1'
+      ? null
+      : await readOrganizationsCache(env, cacheKey);
   if (cached) {
     if (!lookfor && !normalizedFilters) {
       return json({ result: cached });
@@ -350,11 +354,15 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   const cleaned = stripFacetHrefs(payload);
   const filtered = filterOrganizationsPayload(cleaned, lookfor, normalizedFilters);
   if (filtered) {
-    await writeOrganizationsCache(env, cacheKey, cleaned);
+    if (env.FINNA_MCP_DISABLE_CACHE !== '1') {
+      await writeOrganizationsCache(env, cacheKey, cleaned);
+    }
     return json({ result: filtered });
   }
   if (!lookfor && !normalizedFilters) {
-    await writeOrganizationsCache(env, cacheKey, cleaned);
+    if (env.FINNA_MCP_DISABLE_CACHE !== '1') {
+      await writeOrganizationsCache(env, cacheKey, cleaned);
+    }
   }
   return json({ result: cleaned });
 }
@@ -628,12 +636,19 @@ function filterFacetEntry(
   const translated = String(entry.translated ?? '');
   const valueLower = value.toLowerCase();
   const translatedLower = translated.toLowerCase();
+  const foldedValue = foldFinnish(valueLower);
+  const foldedTranslated = foldFinnish(translatedLower);
+  const foldedVariants = variants.map((variant) => foldFinnish(variant));
   const matchesLookfor =
     variants.length === 0
       ? true
       : variants.some(
           (variant) =>
             valueLower.includes(variant) || translatedLower.includes(variant),
+        ) ||
+        foldedVariants.some(
+          (variant) =>
+            foldedValue.includes(variant) || foldedTranslated.includes(variant),
         );
 
   const hasInclude =
@@ -666,6 +681,10 @@ function filterFacetEntry(
   }
 
   return { kept, node: updated };
+}
+
+function foldFinnish(value: string): string {
+  return value.replace(/[äÄ]/g, 'a').replace(/[öÖ]/g, 'o').replace(/[åÅ]/g, 'a');
 }
 
 async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
