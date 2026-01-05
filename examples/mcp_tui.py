@@ -53,9 +53,31 @@ def _save_history(entries: list[str]) -> None:
 
 
 _MODEL_CACHE: dict[str, object] = {"ts": 0.0, "data": []}
+_CACHE_PATH = os.path.join(os.path.dirname(__file__), ".openrouter_models_cache.json")
+
+
+def _load_model_cache() -> None:
+    try:
+        with open(_CACHE_PATH, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        _MODEL_CACHE["ts"] = float(payload.get("ts", 0.0))
+        _MODEL_CACHE["data"] = payload.get("data", [])
+    except FileNotFoundError:
+        pass
+    except Exception:
+        return
+
+
+def _save_model_cache() -> None:
+    try:
+        with open(_CACHE_PATH, "w", encoding="utf-8") as handle:
+            json.dump(_MODEL_CACHE, handle)
+    except Exception:
+        pass
 
 
 def _fetch_openrouter_models(force: bool = False) -> tuple[list[dict], bool]:
+    _load_model_cache()
     cached = _MODEL_CACHE.get("data", [])
     ts = float(_MODEL_CACHE.get("ts", 0.0))
     if not force and cached and (time.time() - ts) < 3600:
@@ -72,6 +94,7 @@ def _fetch_openrouter_models(force: bool = False) -> tuple[list[dict], bool]:
     if isinstance(data, list) and data:
         _MODEL_CACHE["ts"] = time.time()
         _MODEL_CACHE["data"] = data
+        _save_model_cache()
     return data, False
 
 
