@@ -1,14 +1,14 @@
 import argparse
 import asyncio
-import atexit
-import curses
 import io
 import json
 import os
 import sys
-import textwrap
-import readline
 import urllib.request
+
+from textual.app import App, ComposeResult
+from textual.containers import Vertical
+from textual.widgets import Footer, Header, Input, Static, TextLog
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStreamableHTTP
@@ -21,25 +21,6 @@ def _configure_stdio() -> None:
         return
     sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", errors="replace")
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-
-
-def _configure_history() -> None:
-    history_path = os.environ.get("FINNA_MCP_HISTORY", "~/.finna_mcp_history")
-    history_file = os.path.expanduser(history_path)
-    try:
-        readline.read_history_file(history_file)
-    except FileNotFoundError:
-        pass
-    except Exception:
-        return
-
-    def save_history() -> None:
-        try:
-            readline.write_history_file(history_file)
-        except Exception:
-            pass
-
-    atexit.register(save_history)
 
 
 def _load_history() -> list[str]:
@@ -93,222 +74,190 @@ def _format_model_list(models: list[dict]) -> list[str]:
     return lines
 
 
-def _wrap_lines(lines, width):
-    wrapped = []
-    for line in lines:
-        wrapped.extend(textwrap.wrap(line, width=width) or [""])
-    return wrapped
+class FinnaTUI(App):
+    CSS = """
+    Screen {
+      layout: vertical;
+    }
+    #conversation, #calls, #responses {
+      height: 1fr;
+      border: solid $accent;
+    }
+    #prompt {
+      height: 3;
+      border: solid $accent;
+    }
+    """
 
+    BINDINGS = [
+        ("ctrl+c", "quit", "Quit"),
+        ("escape", "quit", "Quit"),
+    ]
 
-def _draw_panel(win, title, lines, height, width):
-    win.erase()
-    win.box()
-    title = f" {title} "
-    try:
-        win.addstr(0, max(1, (width - len(title)) // 2), title)
-    except curses.error:
-        pass
-    body_height = height - 2
-    visible = lines[-body_height:]
-    for idx, line in enumerate(visible):
-        if idx >= body_height:
-            break
-        try:
-            win.addstr(1 + idx, 1, line[: width - 2])
-        except curses.error:
-            pass
-    win.noutrefresh()
+    def __init__(self, question: str, mcp_url: str, model: str) -> None:
+        super().__init__()
+        self.question = question
+        self.mcp_url = mcp_url
+        self.model = model
+        self.agent: Agent | None = None
+        self.server: MCPServerStreamableHTTP | None = None
+        self.history_entries = _load_history()
+        self.history_index = len(self.history_entries)
+        self.model_options: list[dict] = []
+        self._init_lock = asyncio.Lock()
 
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Vertical(
+            Static("Conversation", id="conversation-label"),
+            TextLog(id="conversation", highlight=True, markup=True),
+            Static("MCP Calls", id="calls-label"),
+            TextLog(id="calls", highlight=True, markup=True),
+            Static("MCP Responses", id="responses-label"),
+            TextLog(id="responses", highlight=True, markup=True),
+        )
+        yield Input(placeholder="Ask a question (/clear, /exit, /models, /model <id>)", id="prompt")
+        yield Footer()
 
-def run_tui(question: str, mcp_url: str, model: str) -> None:
-    instructions = (
-        """You are a data assistant for Finna via MCP.
-        Use the available MCP tools to search records and fetch metadata.
-        Prefer returning records with actionable resources (images, attachments, online URLs).
-        When filters are needed, use the structured filter helper.
-        Do not ask the user for more information unless absolutely required."""
-    )
+    async def on_mount(self) -> None:
+        await self._ensure_agent()
+        if self.question:
+            await self._handle_user_input(self.question)
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    async def _ensure_agent(self) -> None:
+        async with self._init_lock:
+            if self.agent:
+                return
 
-    history: list[object] = []
-    conversation: list[str] = []
-    mcp_calls: list[str] = []
-    mcp_responses: list[str] = []
-
-    async def process_tool_call(ctx, call_tool, name, tool_args):
-        mcp_calls.append(json.dumps({"name": name, "arguments": tool_args}, ensure_ascii=True))
-        try:
-            result = await call_tool(name, tool_args, None)
-        except Exception as exc:
-            mcp_responses.append(str(exc))
-            raise
-        mcp_responses.append(json.dumps(result, ensure_ascii=True, default=str))
-        return result
-
-    server = MCPServerStreamableHTTP(mcp_url, process_tool_call=process_tool_call)
-    loop.run_until_complete(server.__aenter__())
-    agent = Agent(model, toolsets=[server], instructions=instructions)
-
-    def render(stdscr):
-        stdscr.clear()
-        height, width = stdscr.getmaxyx()
-        input_height = 3
-        panel_height = max(6, (height - input_height) // 3)
-        conv_height = panel_height
-        calls_height = panel_height
-        resp_height = height - input_height - conv_height - calls_height
-        if resp_height < 6:
-            resp_height = 6
-            conv_height = max(6, (height - input_height - resp_height) // 2)
-            calls_height = height - input_height - resp_height - conv_height
-
-        conv_win = stdscr.derwin(conv_height, width, 0, 0)
-        calls_win = stdscr.derwin(calls_height, width, conv_height, 0)
-        resp_win = stdscr.derwin(resp_height, width, conv_height + calls_height, 0)
-        input_win = stdscr.derwin(input_height, width, height - input_height, 0)
-
-        conv_lines = _wrap_lines(conversation, width - 2)
-        call_lines = _wrap_lines(mcp_calls, width - 2)
-        resp_lines = _wrap_lines(mcp_responses, width - 2)
-
-        _draw_panel(conv_win, "Conversation", conv_lines, conv_height, width)
-        _draw_panel(calls_win, "MCP Calls", call_lines, calls_height, width)
-        _draw_panel(resp_win, "MCP Responses", resp_lines, resp_height, width)
-
-        input_win.erase()
-        input_win.box()
-        input_win.addstr(0, 2, " Input ")
-        input_win.addstr(1, 1, "> ")
-        input_win.noutrefresh()
-        curses.doupdate()
-
-    def prompt_input(stdscr, history_entries: list[str]) -> str:
-        input_win = stdscr.derwin(3, stdscr.getmaxyx()[1], stdscr.getmaxyx()[0] - 3, 0)
-        input_win.erase()
-        input_win.box()
-        input_win.addstr(0, 2, " Input ")
-        input_win.addstr(1, 1, "> ")
-        input_win.refresh()
-        input_win.keypad(True)
-        buffer: list[str] = []
-        history_index = len(history_entries)
-        cursor_x = 3
-        while True:
-            input_win.move(1, cursor_x)
-            ch = input_win.getch()
-            if ch in (curses.KEY_ENTER, 10, 13):
-                break
-            if ch in (curses.KEY_BACKSPACE, 127, 8):
-                if buffer:
-                    buffer.pop()
-                    cursor_x = max(3, cursor_x - 1)
-                    input_win.move(1, cursor_x)
-                    input_win.delch()
-                continue
-            if ch == curses.KEY_UP:
-                if history_entries:
-                    history_index = max(0, history_index - 1)
-                    buffer = list(history_entries[history_index])
-            elif ch == curses.KEY_DOWN:
-                if history_entries:
-                    history_index = min(len(history_entries), history_index + 1)
-                    if history_index == len(history_entries):
-                        buffer = []
-                    else:
-                        buffer = list(history_entries[history_index])
-            elif 32 <= ch <= 126:
-                buffer.append(chr(ch))
-            else:
-                continue
-
-            input_win.move(1, 3)
-            input_win.clrtoeol()
-            input_win.addstr(1, 3, "".join(buffer))
-            cursor_x = 3 + len(buffer)
-            input_win.refresh()
-
-        return "".join(buffer).strip()
-
-    def run_with_history(user_input: str) -> None:
-        nonlocal history
-        conversation.append(f"User: {user_input}")
-        try:
-            result = loop.run_until_complete(agent.run(user_input, message_history=history))
-        except Exception as exc:
-            conversation.append(f"Assistant: ERROR: {exc}")
-            return
-        if hasattr(result, "all_messages"):
-            history = list(result.all_messages())
-        output = result.output if hasattr(result, "output") else str(result)
-        conversation.append(f"Assistant: {output}")
-
-    model_options: list[dict] = []
-
-    def tui_main(stdscr):
-        curses.curs_set(1)
-        stdscr.nodelay(False)
-        history_entries = _load_history()
-        if question:
-            run_with_history(question)
-        while True:
-            render(stdscr)
-            user_input = prompt_input(stdscr, history_entries)
-            if not user_input:
-                continue
-            if user_input.lower() == "/exit":
-                break
-            if user_input.lower() == "/models":
-                conversation.append("System: fetching OpenRouter models...")
-                render(stdscr)
+            async def process_tool_call(ctx, call_tool, name, tool_args):
+                calls = self.query_one("#calls", TextLog)
+                calls.write(json.dumps({"name": name, "arguments": tool_args}, ensure_ascii=True))
                 try:
-                    model_options[:] = _fetch_openrouter_models()
-                    conversation.extend(_format_model_list(model_options))
+                    result = await call_tool(name, tool_args, None)
                 except Exception as exc:
-                    conversation.append(f"System: failed to fetch models: {exc}")
-                continue
-            if user_input.lower().startswith("/model "):
-                selection = user_input.split(" ", 1)[1].strip()
-                if not selection:
-                    continue
-                chosen = None
-                if selection.isdigit() and model_options:
-                    index = int(selection)
-                    if 1 <= index <= min(25, len(model_options)):
-                        chosen = model_options[index - 1].get("id")
-                else:
-                    chosen = selection
-                if chosen:
-                    agent.model = chosen
-                    conversation.append(f"System: selected model {chosen}")
-                else:
-                    conversation.append("System: invalid model selection.")
-                continue
-            if user_input.lower() == "/clear":
-                conversation.clear()
-                mcp_calls.clear()
-                mcp_responses.clear()
-                history.clear()
-                continue
-            history_entries.append(user_input)
-            _save_history(history_entries)
-            run_with_history(user_input)
+                    responses = self.query_one("#responses", TextLog)
+                    responses.write(str(exc))
+                    raise
+                responses = self.query_one("#responses", TextLog)
+                responses.write(json.dumps(result, ensure_ascii=True, default=str))
+                return result
 
-    try:
-        curses.wrapper(tui_main)
-    finally:
-        loop.run_until_complete(server.__aexit__(None, None, None))
-        loop.close()
+            self.server = MCPServerStreamableHTTP(self.mcp_url, process_tool_call=process_tool_call)
+            await self.server.__aenter__()
+            self.agent = Agent(self.model, toolsets=[self.server], instructions=self._instructions())
+
+    def _instructions(self) -> str:
+        return (
+            "You are a data assistant for Finna via MCP. "
+            "Use the available MCP tools to search records and fetch metadata. "
+            "Prefer returning records with actionable resources (images, attachments, online URLs). "
+            "When filters are needed, use the structured filter helper. "
+            "Do not ask the user for more information unless absolutely required."
+        )
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        user_input = event.value.strip()
+        event.input.value = ""
+        if not user_input:
+            return
+        await self._handle_user_input(user_input)
+
+    async def _handle_user_input(self, user_input: str) -> None:
+        if user_input.lower() == "/exit":
+            await self.action_quit()
+            return
+        if user_input.lower() == "/clear":
+            self.query_one("#conversation", TextLog).clear()
+            self.query_one("#calls", TextLog).clear()
+            self.query_one("#responses", TextLog).clear()
+            return
+        if user_input.lower() == "/models":
+            await self._list_models()
+            return
+        if user_input.lower().startswith("/model "):
+            await self._select_model(user_input.split(" ", 1)[1].strip())
+            return
+
+        self._append_history(user_input)
+        await self._ask_agent(user_input)
+
+    async def _ask_agent(self, user_input: str) -> None:
+        conversation = self.query_one("#conversation", TextLog)
+        conversation.write(f"[bold cyan]User:[/bold cyan] {user_input}")
+        await self._ensure_agent()
+        assert self.agent is not None
+        try:
+            result = await self.agent.run(user_input)
+        except Exception as exc:
+            conversation.write(f"[bold red]Error:[/bold red] {exc}")
+            return
+        output = result.output if hasattr(result, "output") else str(result)
+        conversation.write(f"[bold green]Assistant:[/bold green] {output}")
+
+    async def _list_models(self) -> None:
+        conversation = self.query_one("#conversation", TextLog)
+        conversation.write("[bold yellow]System:[/bold yellow] Fetching OpenRouter models...")
+        try:
+            models = await asyncio.to_thread(_fetch_openrouter_models)
+        except Exception as exc:
+            conversation.write(f"[bold red]System:[/bold red] Failed to fetch models: {exc}")
+            return
+        self.model_options = models
+        for line in _format_model_list(models):
+            conversation.write(f"[bold yellow]{line}[/bold yellow]")
+
+    async def _select_model(self, selection: str) -> None:
+        if not selection:
+            return
+        chosen = None
+        if selection.isdigit() and self.model_options:
+            index = int(selection)
+            if 1 <= index <= min(25, len(self.model_options)):
+                chosen = self.model_options[index - 1].get("id")
+        else:
+            chosen = selection
+        conversation = self.query_one("#conversation", TextLog)
+        if not chosen:
+            conversation.write("[bold red]System:[/bold red] Invalid model selection.")
+            return
+        self.model = chosen
+        if self.agent:
+            self.agent.model = chosen
+        conversation.write(f"[bold yellow]System:[/bold yellow] Selected model {chosen}")
+
+    def _append_history(self, user_input: str) -> None:
+        self.history_entries.append(user_input)
+        self.history_index = len(self.history_entries)
+        _save_history(self.history_entries)
+
+    async def on_key(self, event) -> None:
+        if event.key == "up":
+            await self._navigate_history(-1)
+        elif event.key == "down":
+            await self._navigate_history(1)
+
+    async def _navigate_history(self, delta: int) -> None:
+        if not self.history_entries:
+            return
+        self.history_index = max(0, min(len(self.history_entries), self.history_index + delta))
+        prompt = self.query_one("#prompt", Input)
+        if self.history_index >= len(self.history_entries):
+            prompt.value = ""
+        else:
+            prompt.value = self.history_entries[self.history_index]
+            prompt.cursor_position = len(prompt.value)
+
+    async def on_shutdown_request(self) -> None:
+        if self.server:
+            await self.server.__aexit__(None, None, None)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="PydanticAI MCP TUI")
+    parser = argparse.ArgumentParser(description="PydanticAI MCP Textual TUI")
     parser.add_argument("question", nargs="*", help="Question to ask the model")
     args = parser.parse_args()
 
     _configure_stdio()
-    _configure_history()
 
     question = " ".join(args.question).strip()
 
@@ -316,7 +265,8 @@ def main() -> None:
     model_id = os.environ.get("MODEL_ID", "openai:gpt-4o-mini")
     model = os.environ.get("MODEL", model_id)
 
-    run_tui(question, mcp_url, model)
+    app = FinnaTUI(question, mcp_url, model)
+    app.run()
 
 
 if __name__ == "__main__":

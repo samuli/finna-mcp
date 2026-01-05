@@ -90,6 +90,7 @@ curl 'https://finna.fi/AJAX/JSON?method=getItemStatuses' \
   - `pip install -r examples/requirements.txt`
   - `python examples/mcp_cli.py "find photos of helsinki"` (uses `MCP_URL` + `MODEL` env vars).
   - `/models` to list OpenRouter models, `/model <id>` to select.
-- Python TUI client (curses, same deps):
+- Python TUI client (Textual, same deps):
   - `python examples/mcp_tui.py`
   - `/models` to list, `/model <id>` to select.
+- Python TUI client uses Textual (see `examples/requirements.txt`).
