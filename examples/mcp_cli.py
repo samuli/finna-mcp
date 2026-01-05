@@ -64,8 +64,9 @@ def _fetch_openrouter_models() -> list[dict]:
     with urllib.request.urlopen(request, timeout=15) as response:
         payload = json.loads(response.read().decode("utf-8"))
     data = payload.get("data", [])
-    _MODEL_CACHE["ts"] = time.time()
-    _MODEL_CACHE["data"] = data
+    if isinstance(data, list) and data:
+        _MODEL_CACHE["ts"] = time.time()
+        _MODEL_CACHE["data"] = data
     return data
 
 
