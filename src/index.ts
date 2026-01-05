@@ -549,36 +549,18 @@ function filterOrganizationsPayload(
   }
 
   let result = entries.slice();
-  if (lookfor) {
-    const query = lookfor.toLowerCase().trim();
-    const variants = buildLookforVariants(query);
-    result = result.filter((entry) => {
-      if (!entry || typeof entry !== 'object') {
-        return false;
-      }
-      const value = String((entry as Record<string, unknown>).value ?? '');
-      const translated = String((entry as Record<string, unknown>).translated ?? '');
-      const valueLower = value.toLowerCase();
-      const translatedLower = translated.toLowerCase();
-      return variants.some(
-        (variant) =>
-          valueLower.includes(variant) || translatedLower.includes(variant),
-      );
-    });
-  }
-
+  const query = lookfor.toLowerCase().trim();
+  const variants = query ? buildLookforVariants(query) : [];
   const includeValues = new Set(filters?.include?.building ?? []);
   const anyValues = new Set(filters?.any?.building ?? []);
   const excludeValues = new Set(filters?.exclude?.building ?? []);
-
-  if (includeValues.size > 0) {
-    result = result.filter((entry) => includeValues.has((entry as any).value));
-  }
-  if (anyValues.size > 0) {
-    result = result.filter((entry) => anyValues.has((entry as any).value));
-  }
-  if (excludeValues.size > 0) {
-    result = result.filter((entry) => !excludeValues.has((entry as any).value));
+  if (
+    variants.length > 0 ||
+    includeValues.size > 0 ||
+    anyValues.size > 0 ||
+    excludeValues.size > 0
+  ) {
+    result = filterFacetEntries(result, variants, includeValues, anyValues, excludeValues);
   }
 
   return {
@@ -612,6 +594,78 @@ function buildLookforVariants(query: string): string[] {
   }
   variants.delete('');
   return Array.from(variants);
+}
+
+function filterFacetEntries(
+  entries: unknown[],
+  variants: string[],
+  includeValues: Set<string>,
+  anyValues: Set<string>,
+  excludeValues: Set<string>,
+): unknown[] {
+  const filtered: unknown[] = [];
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const { kept, node } = filterFacetEntry(record, variants, includeValues, anyValues, excludeValues);
+    if (kept) {
+      filtered.push(node);
+    }
+  }
+  return filtered;
+}
+
+function filterFacetEntry(
+  entry: Record<string, unknown>,
+  variants: string[],
+  includeValues: Set<string>,
+  anyValues: Set<string>,
+  excludeValues: Set<string>,
+): { kept: boolean; node: Record<string, unknown> } {
+  const value = String(entry.value ?? '');
+  const translated = String(entry.translated ?? '');
+  const valueLower = value.toLowerCase();
+  const translatedLower = translated.toLowerCase();
+  const matchesLookfor =
+    variants.length === 0
+      ? true
+      : variants.some(
+          (variant) =>
+            valueLower.includes(variant) || translatedLower.includes(variant),
+        );
+
+  const hasInclude =
+    includeValues.size === 0 ? true : includeValues.has(value);
+  const hasAny = anyValues.size === 0 ? true : anyValues.has(value);
+  const hasExclude = excludeValues.has(value);
+
+  let kept = matchesLookfor && hasInclude && hasAny && !hasExclude;
+  const updated: Record<string, unknown> = { ...entry };
+
+  const childKeys = ['children', 'child', 'childNodes', 'nodes', 'sub'];
+  for (const key of childKeys) {
+    const children = entry[key];
+    if (!Array.isArray(children)) {
+      continue;
+    }
+    const filteredChildren = filterFacetEntries(
+      children,
+      variants,
+      includeValues,
+      anyValues,
+      excludeValues,
+    );
+    if (filteredChildren.length > 0) {
+      updated[key] = filteredChildren;
+      kept = true;
+    } else if (key in updated) {
+      delete updated[key];
+    }
+  }
+
+  return { kept, node: updated };
 }
 
 async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
