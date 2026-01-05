@@ -89,6 +89,7 @@ describe('worker', () => {
     expect(calledUrl).toContain('filter%5B%5D=%7Eformat%3A%220%2FImage%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=%7Eformat%3A%221%2FImage%2FPhoto%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=-building%3A%221%2FTEST%2F%22');
+    expect(payload.result.facets).toBeUndefined();
   });
 
   it('search_records normalizes shorthand filters and book format', async () => {
@@ -121,6 +122,36 @@ describe('worker', () => {
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('filter%5B%5D=building%3A%220%2FURHEILUMUSEO%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=format%3A%220%2FBook%2F%22');
+  });
+
+  it('search_records keeps facets when requested', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resultCount: 0,
+          records: [],
+          facets: { format: [{ value: '0/Book/', count: 1 }] },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: {
+          name: 'search_records',
+          arguments: { lookfor: '*', facets: ['format'] },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    const payload = await response.json();
+    expect(payload.result.facets).toBeDefined();
   });
 
   it('list_organizations uses building facet', async () => {

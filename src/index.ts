@@ -280,7 +280,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
 
   return json({
     result: {
-      ...payload,
+      ...stripFacetsIfUnused(payload, facets),
       records: enriched,
     },
   });
@@ -412,6 +412,20 @@ function mapFilterValue(field: string, value: string): string {
 
 function stripFacetHrefs(payload: Record<string, unknown>): Record<string, unknown> {
   return stripHrefDeep(payload) as Record<string, unknown>;
+}
+
+function stripFacetsIfUnused(
+  payload: Record<string, unknown>,
+  requestedFacets?: string[] | null,
+): Record<string, unknown> {
+  if (requestedFacets && requestedFacets.length > 0) {
+    return payload;
+  }
+  if (!('facets' in payload)) {
+    return payload;
+  }
+  const { facets, ...rest } = payload;
+  return rest as Record<string, unknown>;
 }
 
 function normalizeSort(sort?: string): string | undefined {
