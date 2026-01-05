@@ -95,7 +95,7 @@ class FinnaTUI(App):
       height: 1fr;
       border: solid $accent;
     }
-    #model-label, #model-select {
+    #model-label, #model-filter, #model-select {
       height: 3;
       border: solid $accent;
     }
@@ -133,6 +133,7 @@ class FinnaTUI(App):
             Log(id="responses", highlight=True),
         )
         yield Static("Model (use /models to load)", id="model-label")
+        yield Input(placeholder="Filter models...", id="model-filter")
         yield Select([], prompt="Select model", id="model-select")
         yield Input(placeholder="Ask a question (/clear, /exit, /models, /model <id>)", id="prompt")
         yield Footer()
@@ -140,6 +141,7 @@ class FinnaTUI(App):
     async def on_mount(self) -> None:
         await self._ensure_agent()
         self.query_one("#model-select", Select).disabled = True
+        self.query_one("#model-filter", Input).disabled = True
         if self.question:
             await self._handle_user_input(self.question)
 
@@ -224,13 +226,11 @@ class FinnaTUI(App):
         self.model_options = models
         for line in _format_model_list(models):
             conversation.write(line)
-        options = []
-        for item in sorted(models, key=lambda entry: entry.get("name", ""))[:25]:
-            label = f"{item.get('id')} - {item.get('name')}"
-            options.append((label, item.get("id")))
+        options = self._build_model_options(models, query="")
         selector = self.query_one("#model-select", Select)
         selector.set_options(options)
         selector.disabled = False
+        self.query_one("#model-filter", Input).disabled = False
 
     async def _select_model(self, selection: str) -> None:
         if not selection:
@@ -271,6 +271,32 @@ class FinnaTUI(App):
         if not event.value:
             return
         await self._select_model(str(event.value))
+
+    async def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "model-filter":
+            return
+        if not self.model_options:
+            return
+        options = self._build_model_options(self.model_options, query=event.value)
+        selector = self.query_one("#model-select", Select)
+        selector.set_options(options)
+
+    def _build_model_options(self, models: list[dict], query: str) -> list[tuple[str, str]]:
+        query = query.strip().lower()
+        filtered = models
+        if query:
+            filtered = [
+                item
+                for item in models
+                if query in str(item.get("id", "")).lower()
+                or query in str(item.get("name", "")).lower()
+            ]
+        filtered = sorted(filtered, key=lambda entry: entry.get("name", ""))
+        options: list[tuple[str, str]] = []
+        for item in filtered[:50]:
+            label = f"{item.get('id')} - {item.get('name')}"
+            options.append((label, item.get("id")))
+        return options
 
     async def _navigate_history(self, delta: int) -> None:
         if not self.history_entries:
