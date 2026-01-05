@@ -7,6 +7,7 @@ import sys
 import atexit
 import readline
 import urllib.request
+import time
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStreamableHTTP
@@ -46,7 +47,14 @@ def _configure_history() -> callable | None:
     return save_history
 
 
+_MODEL_CACHE: dict[str, object] = {"ts": 0.0, "data": []}
+
+
 def _fetch_openrouter_models() -> list[dict]:
+    cached = _MODEL_CACHE.get("data", [])
+    ts = float(_MODEL_CACHE.get("ts", 0.0))
+    if cached and (time.time() - ts) < 3600:
+        return cached  # type: ignore[return-value]
     api_key = os.environ.get("OPENROUTER_API_KEY")
     url = "https://openrouter.ai/api/v1/models"
     headers = {"accept": "application/json"}
@@ -55,7 +63,10 @@ def _fetch_openrouter_models() -> list[dict]:
     request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=15) as response:
         payload = json.loads(response.read().decode("utf-8"))
-    return payload.get("data", [])
+    data = payload.get("data", [])
+    _MODEL_CACHE["ts"] = time.time()
+    _MODEL_CACHE["data"] = data
+    return data
 
 
 def _select_model(models: list[dict]) -> str | None:

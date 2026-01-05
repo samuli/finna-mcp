@@ -5,10 +5,11 @@ import json
 import os
 import sys
 import urllib.request
+import time
 
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Footer, Header, Input, Static, Log
+from textual.widgets import Footer, Header, Input, Static, Log, Select
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStreamableHTTP
@@ -51,7 +52,14 @@ def _save_history(entries: list[str]) -> None:
         pass
 
 
+_MODEL_CACHE: dict[str, object] = {"ts": 0.0, "data": []}
+
+
 def _fetch_openrouter_models() -> list[dict]:
+    cached = _MODEL_CACHE.get("data", [])
+    ts = float(_MODEL_CACHE.get("ts", 0.0))
+    if cached and (time.time() - ts) < 3600:
+        return cached  # type: ignore[return-value]
     api_key = os.environ.get("OPENROUTER_API_KEY")
     url = "https://openrouter.ai/api/v1/models"
     headers = {"accept": "application/json"}
@@ -60,7 +68,10 @@ def _fetch_openrouter_models() -> list[dict]:
     request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=15) as response:
         payload = json.loads(response.read().decode("utf-8"))
-    return payload.get("data", [])
+    data = payload.get("data", [])
+    _MODEL_CACHE["ts"] = time.time()
+    _MODEL_CACHE["data"] = data
+    return data
 
 
 def _format_model_list(models: list[dict]) -> list[str]:
@@ -81,6 +92,10 @@ class FinnaTUI(App):
     }
     #conversation, #calls, #responses {
       height: 1fr;
+      border: solid $accent;
+    }
+    #model-label, #model-select {
+      height: 3;
       border: solid $accent;
     }
     #prompt {
@@ -116,11 +131,14 @@ class FinnaTUI(App):
             Static("MCP Responses", id="responses-label"),
             Log(id="responses", highlight=True),
         )
+        yield Static("Model (use /models to load)", id="model-label")
+        yield Select([], prompt="Select model", id="model-select")
         yield Input(placeholder="Ask a question (/clear, /exit, /models, /model <id>)", id="prompt")
         yield Footer()
 
     async def on_mount(self) -> None:
         await self._ensure_agent()
+        self.query_one("#model-select", Select).disabled = True
         if self.question:
             await self._handle_user_input(self.question)
 
@@ -205,6 +223,13 @@ class FinnaTUI(App):
         self.model_options = models
         for line in _format_model_list(models):
             conversation.write(line)
+        options = []
+        for item in sorted(models, key=lambda entry: entry.get("name", ""))[:25]:
+            label = f"{item.get('id')} - {item.get('name')}"
+            options.append((label, item.get("id")))
+        selector = self.query_one("#model-select", Select)
+        selector.set_options(options)
+        selector.disabled = False
 
     async def _select_model(self, selection: str) -> None:
         if not selection:
@@ -224,6 +249,9 @@ class FinnaTUI(App):
         if self.agent:
             self.agent.model = chosen
         conversation.write(f"System: Selected model {chosen}")
+        selector = self.query_one("#model-select", Select)
+        if selector.value != chosen:
+            selector.value = chosen
 
     def _append_history(self, user_input: str) -> None:
         self.history_entries.append(user_input)
@@ -235,6 +263,13 @@ class FinnaTUI(App):
             await self._navigate_history(-1)
         elif event.key == "down":
             await self._navigate_history(1)
+
+    async def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "model-select":
+            return
+        if not event.value:
+            return
+        await self._select_model(str(event.value))
 
     async def _navigate_history(self, delta: int) -> None:
         if not self.history_entries:
