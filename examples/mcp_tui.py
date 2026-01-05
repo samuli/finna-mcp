@@ -26,6 +26,14 @@ def _configure_stdio() -> None:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 
+def _format_error(exc: Exception) -> str:
+    lines = [f"{exc.__class__.__name__}: {exc}"]
+    cause = exc.__cause__ or exc.__context__
+    if cause and cause is not exc:
+        lines.append(f"Caused by {cause.__class__.__name__}: {cause}")
+    return " | ".join(lines)
+
+
 def _load_history() -> list[str]:
     history_path = os.environ.get("FINNA_MCP_HISTORY", "~/.finna_mcp_history")
     history_file = os.path.expanduser(history_path)
@@ -264,7 +272,7 @@ class FinnaTUI(App):
                 try:
                     result = await call_tool(name, tool_args, None)
                 except Exception as exc:
-                    self._append_responses(str(exc))
+                    self._append_responses(_format_error(exc))
                     raise
                 self._append_responses(json.dumps(result, ensure_ascii=True, default=str))
                 return result
@@ -318,7 +326,7 @@ class FinnaTUI(App):
         try:
             result = await self.agent.run(user_input, model_settings={"stream": False})
         except Exception as exc:
-            self._append_conversation(f"Error: {exc}", style="red")
+            self._append_conversation(f"Error: {_format_error(exc)}", style="red")
             return
         output = result.output if hasattr(result, "output") else str(result)
         self._append_conversation(f"Assistant: {output}", style="green")

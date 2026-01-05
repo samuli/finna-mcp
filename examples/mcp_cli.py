@@ -22,6 +22,14 @@ def _configure_stdio() -> None:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 
+def _format_error(exc: Exception) -> str:
+    parts = [f"{exc.__class__.__name__}: {exc}"]
+    cause = exc.__cause__ or exc.__context__
+    if cause and cause is not exc:
+        parts.append(f"Caused by {cause.__class__.__name__}: {cause}")
+    return " | ".join(parts)
+
+
 def _configure_history() -> callable | None:
     history_path = os.environ.get("FINNA_MCP_HISTORY", "~/.finna_mcp_history")
     history_file = os.path.expanduser(history_path)
@@ -182,7 +190,7 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
             result = await call_tool(name, tool_args, None)
         except Exception as exc:  # pragma: no cover - diagnostic path
             print(f"{color_response}MCP ERROR #{call_id}:{color_reset}", flush=True)
-            print(str(exc), flush=True)
+            print(_format_error(exc), flush=True)
             raise
         print(f"{color_response}MCP RESPONSE #{call_id}:{color_reset}", flush=True)
         print(json.dumps(result, indent=2, ensure_ascii=True, default=str), flush=True)
@@ -203,7 +211,7 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
                     model_settings={"stream": False},
                 )
             except Exception as exc:  # pragma: no cover - CLI error path
-                print(f"\nERROR: {exc}")
+                print(f"\nERROR: {_format_error(exc)}")
                 return
 
             if hasattr(result, "all_messages"):
