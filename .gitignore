@@ -21,9 +21,6 @@ pnpm-debug.log*
 .vscode/
 *.swp
 
-# Docs scratch
-/docs/
-
 # Env
 .env
 .env.*

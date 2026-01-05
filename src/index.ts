@@ -1,26 +1,135 @@
 import { z } from 'zod';
+import {
+  buildSearchUrl,
+  buildRecordUrl,
+  buildFacetUrl,
+  extractResourcesFromRecord,
+  enrichRecordResources,
+  type FilterInput,
+} from './finna.js';
 
 type Env = {
   DB: D1Database;
   CACHE_BUCKET: R2Bucket;
-  ORGANIZATION_ALLOWLIST?: string;
+  FINNA_API_BASE?: string;
 };
 
-const toolNames = ['search_records', 'get_record', 'list_organizations'] as const;
-
-type ToolName = (typeof toolNames)[number];
+const toolNames = ['search_records', 'get_record', 'list_organizations', 'extract_resources'] as const;
 
 const CallToolSchema = z.object({
   name: z.enum(toolNames),
   arguments: z.record(z.unknown()).optional(),
 });
 
+const FilterSchema = z
+  .object({
+    include: z.record(z.array(z.string())).optional(),
+    any: z.record(z.array(z.string())).optional(),
+    exclude: z.record(z.array(z.string())).optional(),
+  })
+  .optional();
+
+const SearchRecordsArgs = z.object({
+  lookfor: z.string().default(''),
+  type: z.string().default('AllFields'),
+  page: z.number().int().min(1).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  sort: z.string().optional(),
+  lng: z.string().optional(),
+  filters: FilterSchema,
+  facets: z.array(z.string()).optional(),
+  facetFilters: z.array(z.string()).optional(),
+  fields: z.array(z.string()).optional(),
+  sampleLimit: z.number().int().min(1).max(5).optional(),
+});
+
+const GetRecordArgs = z.object({
+  ids: z.array(z.string()).min(1),
+  lng: z.string().optional(),
+  fields: z.array(z.string()).optional(),
+  includeFullRecord: z.boolean().optional(),
+  includeRawData: z.boolean().optional(),
+  sampleLimit: z.number().int().min(1).max(5).optional(),
+});
+
+const ListOrganizationsArgs = z.object({
+  lookfor: z.string().default(''),
+  type: z.string().default('AllFields'),
+  lng: z.string().optional(),
+  filters: FilterSchema,
+});
+
+const ExtractResourcesArgs = z.object({
+  ids: z.array(z.string()).min(1),
+  lng: z.string().optional(),
+  sampleLimit: z.number().int().min(1).max(5).optional(),
+});
+
 const ListToolsResponse = {
-  tools: toolNames.map((name) => ({
-    name,
-    description: '',
-    inputSchema: { type: 'object', properties: {} },
-  })),
+  tools: [
+    {
+      name: 'search_records',
+      description: 'Search Finna records with LLM-friendly structured filters.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          lookfor: { type: 'string' },
+          type: { type: 'string' },
+          page: { type: 'number' },
+          limit: { type: 'number' },
+          sort: { type: 'string' },
+          lng: { type: 'string' },
+          filters: { type: 'object' },
+          facets: { type: 'array', items: { type: 'string' } },
+          facetFilters: { type: 'array', items: { type: 'string' } },
+          fields: { type: 'array', items: { type: 'string' } },
+          sampleLimit: { type: 'number' },
+        },
+      },
+    },
+    {
+      name: 'get_record',
+      description: 'Fetch record metadata for one or more ids.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          ids: { type: 'array', items: { type: 'string' } },
+          lng: { type: 'string' },
+          fields: { type: 'array', items: { type: 'string' } },
+          includeFullRecord: { type: 'boolean' },
+          includeRawData: { type: 'boolean' },
+          sampleLimit: { type: 'number' },
+        },
+        required: ['ids'],
+      },
+    },
+    {
+      name: 'list_organizations',
+      description: 'List organizations/buildings using the Finna building facet.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          lookfor: { type: 'string' },
+          type: { type: 'string' },
+          lng: { type: 'string' },
+          filters: { type: 'object' },
+        },
+      },
+    },
+    {
+      name: 'extract_resources',
+      description: 'Extract and summarize resource links for record ids.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          ids: { type: 'array', items: { type: 'string' } },
+          lng: { type: 'string' },
+          sampleLimit: { type: 'number' },
+        },
+        required: ['ids'],
+      },
+    },
+  ],
 };
 
 export default {
@@ -52,21 +161,211 @@ export default {
         return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
       }
 
-      const { name } = parsed.data;
+      const { name, arguments: args } = parsed.data;
       if (!toolNames.includes(name)) {
         return json({ error: 'unknown_tool' }, 400);
       }
 
-      return json({ result: { message: 'not_implemented_yet' } });
+      try {
+        switch (name) {
+          case 'search_records':
+            return await handleSearchRecords(env, args);
+          case 'get_record':
+            return await handleGetRecord(env, args);
+          case 'list_organizations':
+            return await handleListOrganizations(env, args);
+          case 'extract_resources':
+            return await handleExtractResources(env, args);
+        }
+      } catch (error) {
+        return json({ error: 'upstream_error', message: errorMessage(error) }, 502);
+      }
     }
 
     return json({ error: 'unknown_method' }, 400);
   },
 };
 
+const DEFAULT_SEARCH_FIELDS = [
+  'id',
+  'title',
+  'formats',
+  'buildings',
+  'languages',
+  'year',
+  'images',
+  'onlineUrls',
+  'urls',
+  'nonPresenterAuthors',
+];
+
+const DEFAULT_RECORD_FIELDS = [
+  'id',
+  'title',
+  'formats',
+  'buildings',
+  'subjects',
+  'genres',
+  'series',
+  'authors',
+  'publishers',
+  'year',
+  'humanReadablePublicationDates',
+  'images',
+  'onlineUrls',
+  'urls',
+  'summary',
+  'measurements',
+];
+
+async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
+  const parsed = SearchRecordsArgs.safeParse(args ?? {});
+  if (!parsed.success) {
+    return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
+  }
+  const {
+    lookfor,
+    type,
+    page,
+    limit,
+    sort,
+    lng,
+    filters,
+    facets,
+    facetFilters,
+    fields,
+    sampleLimit,
+  } = parsed.data;
+
+  const url = buildSearchUrl({
+    apiBase: env.FINNA_API_BASE,
+    lookfor,
+    type,
+    page,
+    limit,
+    sort,
+    lng,
+    filters: filters as FilterInput | undefined,
+    facets,
+    facetFilters,
+    fields: fields ?? DEFAULT_SEARCH_FIELDS,
+  });
+
+  const payload = await fetchJson(url);
+  const records = getRecords(payload);
+  const enriched = records.map((record) =>
+    enrichRecordResources(record, sampleLimit ?? 3),
+  );
+
+  return json({
+    result: {
+      ...payload,
+      records: enriched,
+    },
+  });
+}
+
+async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
+  const parsed = GetRecordArgs.safeParse(args);
+  if (!parsed.success) {
+    return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
+  }
+  const { ids, lng, fields, includeFullRecord, includeRawData, sampleLimit } = parsed.data;
+  const selectedFields = fields ? [...fields] : [...DEFAULT_RECORD_FIELDS];
+  if (includeFullRecord) {
+    selectedFields.push('fullRecord');
+  }
+  if (includeRawData) {
+    selectedFields.push('rawData');
+  }
+
+  const url = buildRecordUrl({
+    apiBase: env.FINNA_API_BASE,
+    ids,
+    lng,
+    fields: selectedFields,
+  });
+
+  const payload = await fetchJson(url);
+  const records = getRecords(payload);
+  const enriched = records.map((record) =>
+    enrichRecordResources(record, sampleLimit ?? 5),
+  );
+
+  return json({
+    result: {
+      ...payload,
+      records: enriched,
+    },
+  });
+}
+
+async function handleListOrganizations(env: Env, args: unknown): Promise<Response> {
+  const parsed = ListOrganizationsArgs.safeParse(args ?? {});
+  if (!parsed.success) {
+    return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
+  }
+  const { lookfor, type, lng, filters } = parsed.data;
+  const url = buildFacetUrl({
+    apiBase: env.FINNA_API_BASE,
+    lookfor,
+    type,
+    lng,
+    filters: filters as FilterInput | undefined,
+    facet: 'building',
+  });
+
+  const payload = await fetchJson(url);
+  return json({ result: payload });
+}
+
+async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
+  const parsed = ExtractResourcesArgs.safeParse(args);
+  if (!parsed.success) {
+    return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
+  }
+  const { ids, lng, sampleLimit } = parsed.data;
+  const url = buildRecordUrl({
+    apiBase: env.FINNA_API_BASE,
+    ids,
+    lng,
+    fields: ['id', 'images', 'onlineUrls', 'urls'],
+  });
+  const payload = await fetchJson(url);
+  const records = getRecords(payload);
+  const resources = records.map((record) =>
+    extractResourcesFromRecord(record, sampleLimit ?? 5),
+  );
+
+  return json({ result: { resources } });
+}
+
+async function fetchJson(url: string): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`Upstream error ${response.status}`);
+  }
+  return (await response.json()) as Record<string, unknown>;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
 function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function getRecords(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const records = payload.records;
+  return Array.isArray(records) ? (records as Record<string, unknown>[]) : [];
 }
