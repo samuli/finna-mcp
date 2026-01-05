@@ -55,11 +55,11 @@ def _save_history(entries: list[str]) -> None:
 _MODEL_CACHE: dict[str, object] = {"ts": 0.0, "data": []}
 
 
-def _fetch_openrouter_models() -> list[dict]:
+def _fetch_openrouter_models(force: bool = False) -> tuple[list[dict], bool]:
     cached = _MODEL_CACHE.get("data", [])
     ts = float(_MODEL_CACHE.get("ts", 0.0))
-    if cached and (time.time() - ts) < 3600:
-        return cached  # type: ignore[return-value]
+    if not force and cached and (time.time() - ts) < 3600:
+        return cached, True  # type: ignore[return-value]
     api_key = os.environ.get("OPENROUTER_API_KEY")
     url = "https://openrouter.ai/api/v1/models"
     headers = {"accept": "application/json"}
@@ -72,7 +72,7 @@ def _fetch_openrouter_models() -> list[dict]:
     if isinstance(data, list) and data:
         _MODEL_CACHE["ts"] = time.time()
         _MODEL_CACHE["data"] = data
-    return data
+    return data, False
 
 
 def _format_model_list(models: list[dict]) -> list[str]:
@@ -135,7 +135,7 @@ class FinnaTUI(App):
         yield Static("Model (use /models to load)", id="model-label")
         yield Input(placeholder="Filter models...", id="model-filter")
         yield Select([], prompt="Select model", id="model-select")
-        yield Input(placeholder="Ask a question (/clear, /exit, /models, /model <id>)", id="prompt")
+        yield Input(placeholder="Ask a question (/clear, /exit, /models[!], /model <id>)", id="prompt")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -192,8 +192,9 @@ class FinnaTUI(App):
             self.query_one("#calls", Log).clear()
             self.query_one("#responses", Log).clear()
             return
-        if user_input.lower() == "/models":
-            await self._list_models()
+        if user_input.lower().startswith("/models"):
+            force = user_input.strip().lower().endswith("!")
+            await self._list_models(force)
             return
         if user_input.lower().startswith("/model "):
             await self._select_model(user_input.split(" ", 1)[1].strip())
@@ -215,14 +216,16 @@ class FinnaTUI(App):
         output = result.output if hasattr(result, "output") else str(result)
         conversation.write(f"Assistant: {output}")
 
-    async def _list_models(self) -> None:
+    async def _list_models(self, force: bool = False) -> None:
         conversation = self.query_one("#conversation", Log)
         conversation.write("System: Fetching OpenRouter models...")
         try:
-            models = await asyncio.to_thread(_fetch_openrouter_models)
+            models, cached = await asyncio.to_thread(_fetch_openrouter_models, force)
         except Exception as exc:
             conversation.write(f"System: Failed to fetch models: {exc}")
             return
+        if cached:
+            conversation.write("System: Using cached OpenRouter model list.")
         self.model_options = models
         for line in _format_model_list(models):
             conversation.write(line)

@@ -50,11 +50,11 @@ def _configure_history() -> callable | None:
 _MODEL_CACHE: dict[str, object] = {"ts": 0.0, "data": []}
 
 
-def _fetch_openrouter_models() -> list[dict]:
+def _fetch_openrouter_models(force: bool = False) -> tuple[list[dict], bool]:
     cached = _MODEL_CACHE.get("data", [])
     ts = float(_MODEL_CACHE.get("ts", 0.0))
-    if cached and (time.time() - ts) < 3600:
-        return cached  # type: ignore[return-value]
+    if not force and cached and (time.time() - ts) < 3600:
+        return cached, True  # type: ignore[return-value]
     api_key = os.environ.get("OPENROUTER_API_KEY")
     url = "https://openrouter.ai/api/v1/models"
     headers = {"accept": "application/json"}
@@ -67,7 +67,7 @@ def _fetch_openrouter_models() -> list[dict]:
     if isinstance(data, list) and data:
         _MODEL_CACHE["ts"] = time.time()
         _MODEL_CACHE["data"] = data
-    return data
+    return data, False
 
 
 def _select_model(models: list[dict]) -> str | None:
@@ -148,7 +148,7 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
 
         while True:
             user_input = input(
-                "\nAsk a question (/clear, /exit, /models, /model <id>): "
+                "\nAsk a question (/clear, /exit, /models[!], /model <id>): "
             ).strip()
             if not user_input:
                 continue
@@ -161,12 +161,15 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
                     agent.model = model
                     print(f"Selected model: {model}")
                 continue
-            if user_input.lower() == "/models":
+            if user_input.lower().startswith("/models"):
+                force = user_input.strip().lower().endswith("!")
                 try:
-                    models = _fetch_openrouter_models()
+                    models, cached = _fetch_openrouter_models(force=force)
                 except Exception as exc:
                     print(f"\nERROR: failed to fetch OpenRouter models: {exc}")
                     continue
+                if cached:
+                    print("\n(Using cached OpenRouter model list)")
                 selected = _select_model(models)
                 if selected:
                     model = selected
