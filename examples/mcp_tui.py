@@ -6,10 +6,11 @@ import os
 import sys
 import urllib.request
 import time
+import subprocess
 
 from textual.app import App, ComposeResult
-from textual.containers import Vertical
-from textual.widgets import Footer, Header, Input, Static, RichLog, Select
+from textual.containers import Horizontal, Vertical
+from textual.widgets import Button, Footer, Header, Input, Static, RichLog, Select
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStreamableHTTP
@@ -154,6 +155,12 @@ class FinnaTUI(App):
       height: 1fr;
       border: solid $accent;
     }
+    .panel-controls {
+      height: 3;
+    }
+    .panel-controls Button {
+      margin-left: 1;
+    }
     #model-label, #model-filter, #model-select {
       height: 3;
       border: solid $accent;
@@ -180,16 +187,31 @@ class FinnaTUI(App):
         self.history_index = len(self.history_entries)
         self.model_options: list[dict] = []
         self.model_option_values: set[str] = set()
+        self.conversation_lines: list[str] = []
+        self.call_lines: list[str] = []
+        self.response_lines: list[str] = []
         self._init_lock = asyncio.Lock()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Vertical(
-            Static("Conversation", id="conversation-label"),
+            Horizontal(
+                Static("Conversation", id="conversation-label"),
+                Button("Copy", id="conversation-copy", classes="panel-controls"),
+                Button("Clear", id="conversation-clear", classes="panel-controls"),
+            ),
             RichLog(id="conversation", wrap=True, auto_scroll=True),
-            Static("MCP Calls", id="calls-label"),
+            Horizontal(
+                Static("MCP Calls", id="calls-label"),
+                Button("Copy", id="calls-copy", classes="panel-controls"),
+                Button("Clear", id="calls-clear", classes="panel-controls"),
+            ),
             RichLog(id="calls", wrap=True, auto_scroll=True),
-            Static("MCP Responses", id="responses-label"),
+            Horizontal(
+                Static("MCP Responses", id="responses-label"),
+                Button("Copy", id="responses-copy", classes="panel-controls"),
+                Button("Clear", id="responses-clear", classes="panel-controls"),
+            ),
             RichLog(id="responses", wrap=True, auto_scroll=True),
         )
         yield Static("Model (use /models to load)", id="model-label")
@@ -202,8 +224,7 @@ class FinnaTUI(App):
         saved_model = _load_saved_model()
         if saved_model:
             self.model = saved_model
-            conversation = self.query_one("#conversation", RichLog)
-            conversation.write(f"System: Restored model {self.model}")
+            self._append_conversation(f"System: Restored model {self.model}")
         await self._ensure_agent()
         self.query_one("#model-select", Select).disabled = True
         self.query_one("#model-filter", Input).disabled = True
@@ -230,18 +251,18 @@ class FinnaTUI(App):
                 return
 
             async def process_tool_call(ctx, call_tool, name, tool_args):
-                calls = self.query_one("#calls", RichLog)
-                calls.write(json.dumps({"name": name, "arguments": tool_args}, ensure_ascii=True))
-                conversation = self.query_one("#conversation", RichLog)
-                conversation.write(f"Tool call: {name} {json.dumps(tool_args, ensure_ascii=True)}")
+                self._append_calls(
+                    json.dumps({"name": name, "arguments": tool_args}, ensure_ascii=True)
+                )
+                self._append_conversation(
+                    f"Tool call: {name} {json.dumps(tool_args, ensure_ascii=True)}"
+                )
                 try:
                     result = await call_tool(name, tool_args, None)
                 except Exception as exc:
-                    responses = self.query_one("#responses", RichLog)
-                    responses.write(str(exc))
+                    self._append_responses(str(exc))
                     raise
-                responses = self.query_one("#responses", RichLog)
-                responses.write(json.dumps(result, ensure_ascii=True, default=str))
+                self._append_responses(json.dumps(result, ensure_ascii=True, default=str))
                 return result
 
             self.server = MCPServerStreamableHTTP(self.mcp_url, process_tool_call=process_tool_call)
@@ -269,6 +290,9 @@ class FinnaTUI(App):
             await self.action_quit()
             return
         if user_input.lower() == "/clear":
+            self.conversation_lines.clear()
+            self.call_lines.clear()
+            self.response_lines.clear()
             self.query_one("#conversation", RichLog).clear()
             self.query_one("#calls", RichLog).clear()
             self.query_one("#responses", RichLog).clear()
@@ -285,31 +309,29 @@ class FinnaTUI(App):
         await self._ask_agent(user_input)
 
     async def _ask_agent(self, user_input: str) -> None:
-        conversation = self.query_one("#conversation", RichLog)
-        conversation.write(f"User: {user_input}")
+        self._append_conversation(f"User: {user_input}")
         await self._ensure_agent()
         assert self.agent is not None
         try:
             result = await self.agent.run(user_input, model_settings={"stream": False})
         except Exception as exc:
-            conversation.write(f"Error: {exc}")
+            self._append_conversation(f"Error: {exc}")
             return
         output = result.output if hasattr(result, "output") else str(result)
-        conversation.write(f"Assistant: {output}")
+        self._append_conversation(f"Assistant: {output}")
 
     async def _list_models(self, force: bool = False) -> None:
-        conversation = self.query_one("#conversation", RichLog)
-        conversation.write("System: Fetching OpenRouter models...")
+        self._append_conversation("System: Fetching OpenRouter models...")
         try:
             models, cached = await asyncio.to_thread(_fetch_openrouter_models, force)
         except Exception as exc:
-            conversation.write(f"System: Failed to fetch models: {exc}")
+            self._append_conversation(f"System: Failed to fetch models: {exc}")
             return
         if cached:
-            conversation.write("System: Using cached OpenRouter model list.")
+            self._append_conversation("System: Using cached OpenRouter model list.")
         self.model_options = models
         for line in _format_model_list(models):
-            conversation.write(line)
+            self._append_conversation(line)
         options = self._build_model_options(models, query="")
         selector = self.query_one("#model-select", Select)
         selector.set_options(options)
@@ -327,14 +349,13 @@ class FinnaTUI(App):
                 chosen = self.model_options[index - 1].get("id")
         else:
             chosen = selection
-        conversation = self.query_one("#conversation", RichLog)
         if not chosen:
-            conversation.write("System: Invalid model selection.")
+            self._append_conversation("System: Invalid model selection.")
             return
         self.model = _normalize_openrouter_model(chosen)
         if self.agent:
             self.agent.model = self.model
-        conversation.write(f"System: Selected model {self.model}")
+        self._append_conversation(f"System: Selected model {self.model}")
         _save_selected_model(self.model)
         selector = self.query_one("#model-select", Select)
         if selector.value != chosen:
@@ -368,6 +389,58 @@ class FinnaTUI(App):
         selector = self.query_one("#model-select", Select)
         selector.set_options(options)
         self.model_option_values = {value for value, _ in options}
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if button_id == "conversation-copy":
+            self._copy_to_clipboard("\n".join(self.conversation_lines))
+            self._append_conversation("System: Copied conversation to clipboard.")
+            return
+        if button_id == "calls-copy":
+            self._copy_to_clipboard("\n".join(self.call_lines))
+            self._append_calls("System: Copied calls to clipboard.")
+            return
+        if button_id == "responses-copy":
+            self._copy_to_clipboard("\n".join(self.response_lines))
+            self._append_responses("System: Copied responses to clipboard.")
+            return
+        if button_id == "conversation-clear":
+            self.conversation_lines.clear()
+            self.query_one("#conversation", RichLog).clear()
+            return
+        if button_id == "calls-clear":
+            self.call_lines.clear()
+            self.query_one("#calls", RichLog).clear()
+            return
+        if button_id == "responses-clear":
+            self.response_lines.clear()
+            self.query_one("#responses", RichLog).clear()
+            return
+
+    def _append_conversation(self, line: str) -> None:
+        self.conversation_lines.append(line)
+        self.query_one("#conversation", RichLog).write(line)
+
+    def _append_calls(self, line: str) -> None:
+        self.call_lines.append(line)
+        self.query_one("#calls", RichLog).write(line)
+
+    def _append_responses(self, line: str) -> None:
+        self.response_lines.append(line)
+        self.query_one("#responses", RichLog).write(line)
+
+    def _copy_to_clipboard(self, content: str) -> None:
+        if not content:
+            return
+        try:
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=content,
+                text=True,
+                check=True,
+            )
+        except Exception:
+            self._append_conversation("System: Failed to copy to clipboard.")
 
     def _build_model_options(self, models: list[dict], query: str) -> list[tuple[str, str]]:
         query = query.strip().lower()
