@@ -309,17 +309,37 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
   const { lookfor, type, lng, filters } = parsed.data;
+  const normalizedFilters = normalizeFilters(filters);
   const url = buildFacetUrl({
     apiBase: env.FINNA_API_BASE,
     lookfor,
     type,
     lng,
-    filters: filters as FilterInput | undefined,
+    filters: normalizedFilters,
     facet: 'building',
   });
 
   const payload = await fetchJson(url);
   return json({ result: stripFacetHrefs(payload) });
+}
+
+function normalizeFilters(filters?: unknown): FilterInput | undefined {
+  if (!filters || typeof filters !== 'object') {
+    return undefined;
+  }
+  const candidate = filters as Record<string, unknown>;
+  if ('include' in candidate || 'any' in candidate || 'exclude' in candidate) {
+    return candidate as FilterInput;
+  }
+  const include: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(candidate)) {
+    if (Array.isArray(value)) {
+      include[key] = value.filter((item) => typeof item === 'string') as string[];
+    } else if (typeof value === 'string') {
+      include[key] = [value];
+    }
+  }
+  return Object.keys(include).length > 0 ? { include } : undefined;
 }
 
 function stripFacetHrefs(payload: Record<string, unknown>): Record<string, unknown> {

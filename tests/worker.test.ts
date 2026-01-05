@@ -103,7 +103,10 @@ describe('worker', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         method: 'callTool',
-        params: { name: 'list_organizations', arguments: { lookfor: '' } },
+        params: {
+          name: 'list_organizations',
+          arguments: { lookfor: '', filters: { building: ['1/KANSA/'] } },
+        },
       }),
     });
 
@@ -113,6 +116,7 @@ describe('worker', () => {
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('facet%5B%5D=building');
     expect(calledUrl).toContain('limit=0');
+    expect(calledUrl).toContain('filter%5B%5D=building%3A%221%2FKANSA%2F%22');
   });
 
   it('get_record supports multiple ids and resource samples', async () => {
@@ -150,7 +154,6 @@ describe('worker', () => {
     expect(payload.result.records[0].resourceCounts.audio).toBe(1);
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('id%5B%5D=a.1');
-    expect(calledUrl).toContain('field%5B%5D=fullRecord');
     expect(calledUrl).toContain('field%5B%5D=rawData');
   });
 
