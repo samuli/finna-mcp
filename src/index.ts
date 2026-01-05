@@ -21,7 +21,6 @@ const toolNames = [
   'get_record',
   'list_organizations',
   'extract_resources',
-  'get_holdings',
 ] as const;
 
 type ToolName = (typeof toolNames)[number];
@@ -91,12 +90,6 @@ const ExtractResourcesArgs = z.object({
   ids: z.array(z.string()).min(1),
   lng: z.string().optional(),
   sampleLimit: z.number().int().min(1).max(5).optional(),
-});
-
-const GetHoldingsArgs = z.object({
-  ids: z.array(z.string()).min(1).max(50),
-  lng: z.string().optional(),
-  sid: z.string().optional(),
 });
 
 const ListToolsResponse = {
@@ -200,20 +193,6 @@ const ListToolsResponse = {
         required: ['ids'],
       },
     },
-    {
-      name: 'get_holdings',
-      description:
-        'Fetch availability/holdings info for record ids from Finna UI. Accepts a list of record ids; sid is optional (from Finna UI) and can improve results.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          ids: { type: 'array', items: { type: 'string' } },
-          lng: { type: 'string' },
-          sid: { type: 'string' },
-        },
-        required: ['ids'],
-      },
-    },
   ],
 };
 
@@ -262,8 +241,6 @@ export default {
             return await handleListOrganizations(env, args);
           case 'extract_resources':
             return await handleExtractResources(env, args);
-          case 'get_holdings':
-            return await handleGetHoldings(env, args);
         }
       } catch (error) {
         return json({ error: 'upstream_error', message: errorMessage(error) });
@@ -1061,43 +1038,6 @@ async function handleExtractResources(env: Env, args: unknown): Promise<Response
   return json({ result: { resources } });
 }
 
-async function handleGetHoldings(env: Env, args: unknown): Promise<Response> {
-  const parsed = GetHoldingsArgs.safeParse(args);
-  if (!parsed.success) {
-    return json({ error: 'invalid_params', details: parsed.error.format() });
-  }
-  const { ids, lng, sid } = parsed.data;
-  const base = env.FINNA_UI_BASE ?? 'https://finna.fi';
-  const url = new URL('/AJAX/JSON', base);
-  url.searchParams.set('method', 'getItemStatuses');
-  if (lng) {
-    url.searchParams.set('lng', lng);
-  }
-
-  const body = new URLSearchParams();
-  ids.forEach((id) => body.append('id[]', id));
-  if (sid) {
-    body.append('sid', sid);
-  }
-
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      'x-requested-with': 'XMLHttpRequest',
-      origin: base,
-      referer: `${base}/Record/${encodeURIComponent(ids[0] ?? '')}`,
-    },
-    body: body.toString(),
-  });
-  if (!response.ok) {
-    throw new Error(`Upstream error ${response.status}`);
-  }
-  const payload = (await response.json()) as Record<string, unknown>;
-  return json({ result: pruneEmptyDeep(payload) });
-}
-
 async function fetchJson(url: string): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
     method: 'GET',
@@ -1159,47 +1099,6 @@ function stripRecordUrl(record: Record<string, unknown>): Record<string, unknown
   }
   const { recordUrl: _omit, ...rest } = record;
   return rest;
-}
-
-function pruneEmptyDeep(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    const pruned = value.map((item) => pruneEmptyDeep(item)).filter((item) => {
-      if (Array.isArray(item)) {
-        return item.length > 0;
-      }
-      if (item && typeof item === 'object') {
-        return Object.keys(item as Record<string, unknown>).length > 0;
-      }
-      return item !== null && item !== undefined;
-    });
-    return pruned;
-  }
-  if (value && typeof value === 'object') {
-    const output: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      const pruned = pruneEmptyDeep(val);
-      if (Array.isArray(pruned)) {
-        if (pruned.length === 0) {
-          continue;
-        }
-        output[key] = pruned;
-        continue;
-      }
-      if (pruned && typeof pruned === 'object') {
-        if (Object.keys(pruned as Record<string, unknown>).length === 0) {
-          continue;
-        }
-        output[key] = pruned;
-        continue;
-      }
-      if (pruned === null || pruned === undefined) {
-        continue;
-      }
-      output[key] = pruned;
-    }
-    return output;
-  }
-  return value;
 }
 
 type JsonRpcRequest = {
