@@ -348,6 +348,12 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
 
   const payload = await fetchJson(url);
   const cleaned = stripFacetHrefs(payload);
+  if (lookfor || normalizedFilters) {
+    const filtered = filterOrganizationsPayload(cleaned, lookfor, normalizedFilters);
+    if (filtered) {
+      return json({ result: filtered });
+    }
+  }
   if (!lookfor && !normalizedFilters) {
     await writeOrganizationsCache(env, cacheKey, cleaned);
   }
