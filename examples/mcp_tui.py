@@ -370,8 +370,12 @@ class FinnaTUI(App):
         if user_input.lower() == "/clear":
             self.conversation_lines.clear()
             self.response_lines.clear()
-            self.query_one("#conversation", RichLog).clear()
-            self.query_one("#responses", RichLog).clear()
+            log = self._get_log("#conversation")
+            if log:
+                log.clear()
+            log = self._get_log("#responses")
+            if log:
+                log.clear()
             return
         if user_input.lower().startswith("/models"):
             force = user_input.strip().lower().endswith("!")
@@ -395,8 +399,10 @@ class FinnaTUI(App):
         self._append_conversation(f"User: {user_input}", style="cyan")
         await self._ensure_agent()
         assert self.agent is not None
+        assert self.server is not None
         try:
-            result = await self.agent.run(user_input, model_settings={"stream": False})
+            async with self.server:
+                result = await self.agent.run(user_input, model_settings={"stream": False})
         except asyncio.CancelledError:
             self._append_conversation("System: Request cancelled.", style="blue")
             return
