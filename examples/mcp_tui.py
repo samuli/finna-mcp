@@ -274,7 +274,9 @@ class FinnaTUI(App):
                 except Exception as exc:
                     self._append_responses(_format_error(exc))
                     raise
-                self._append_responses(json.dumps(result, ensure_ascii=True, default=str))
+                response_text = json.dumps(result, ensure_ascii=True, default=str)
+                size_kb = len(response_text.encode("utf-8")) / 1024
+                self._append_responses(f"[{size_kb:.1f} KB] {response_text}")
                 return result
 
             self.server = MCPServerStreamableHTTP(self.mcp_url, process_tool_call=process_tool_call)
