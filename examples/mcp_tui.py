@@ -9,7 +9,7 @@ import time
 
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Footer, Header, Input, Static, Log, Select
+from textual.widgets import Footer, Header, Input, Static, RichLog, Select
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStreamableHTTP
@@ -161,11 +161,11 @@ class FinnaTUI(App):
         yield Header(show_clock=True)
         yield Vertical(
             Static("Conversation", id="conversation-label"),
-            Log(id="conversation", highlight=True),
+            RichLog(id="conversation", wrap=True, auto_scroll=True),
             Static("MCP Calls", id="calls-label"),
-            Log(id="calls", highlight=True),
+            RichLog(id="calls", wrap=True, auto_scroll=True),
             Static("MCP Responses", id="responses-label"),
-            Log(id="responses", highlight=True),
+            RichLog(id="responses", wrap=True, auto_scroll=True),
         )
         yield Static("Model (use /models to load)", id="model-label")
         yield Input(placeholder="Filter models...", id="model-filter")
@@ -195,15 +195,15 @@ class FinnaTUI(App):
                 return
 
             async def process_tool_call(ctx, call_tool, name, tool_args):
-                calls = self.query_one("#calls", Log)
+                calls = self.query_one("#calls", RichLog)
                 calls.write(json.dumps({"name": name, "arguments": tool_args}, ensure_ascii=True))
                 try:
                     result = await call_tool(name, tool_args, None)
                 except Exception as exc:
-                    responses = self.query_one("#responses", Log)
+                    responses = self.query_one("#responses", RichLog)
                     responses.write(str(exc))
                     raise
-                responses = self.query_one("#responses", Log)
+                responses = self.query_one("#responses", RichLog)
                 responses.write(json.dumps(result, ensure_ascii=True, default=str))
                 return result
 
@@ -232,9 +232,9 @@ class FinnaTUI(App):
             await self.action_quit()
             return
         if user_input.lower() == "/clear":
-            self.query_one("#conversation", Log).clear()
-            self.query_one("#calls", Log).clear()
-            self.query_one("#responses", Log).clear()
+            self.query_one("#conversation", RichLog).clear()
+            self.query_one("#calls", RichLog).clear()
+            self.query_one("#responses", RichLog).clear()
             return
         if user_input.lower().startswith("/models"):
             force = user_input.strip().lower().endswith("!")
@@ -248,12 +248,12 @@ class FinnaTUI(App):
         await self._ask_agent(user_input)
 
     async def _ask_agent(self, user_input: str) -> None:
-        conversation = self.query_one("#conversation", Log)
+        conversation = self.query_one("#conversation", RichLog)
         conversation.write(f"User: {user_input}")
         await self._ensure_agent()
         assert self.agent is not None
         try:
-            result = await self.agent.run(user_input)
+            result = await self.agent.run(user_input, model_settings={"stream": False})
         except Exception as exc:
             conversation.write(f"Error: {exc}")
             return
@@ -261,7 +261,7 @@ class FinnaTUI(App):
         conversation.write(f"Assistant: {output}")
 
     async def _list_models(self, force: bool = False) -> None:
-        conversation = self.query_one("#conversation", Log)
+        conversation = self.query_one("#conversation", RichLog)
         conversation.write("System: Fetching OpenRouter models...")
         try:
             models, cached = await asyncio.to_thread(_fetch_openrouter_models, force)
@@ -289,7 +289,7 @@ class FinnaTUI(App):
                 chosen = self.model_options[index - 1].get("id")
         else:
             chosen = selection
-        conversation = self.query_one("#conversation", Log)
+        conversation = self.query_one("#conversation", RichLog)
         if not chosen:
             conversation.write("System: Invalid model selection.")
             return

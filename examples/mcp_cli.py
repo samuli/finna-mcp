@@ -169,7 +169,11 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
         async def run_with_history(user_input: str) -> None:
             nonlocal history
             try:
-                result = await agent.run(user_input, message_history=history)
+                result = await agent.run(
+                    user_input,
+                    message_history=history,
+                    model_settings={"stream": False},
+                )
             except Exception as exc:  # pragma: no cover - CLI error path
                 print(f"\nERROR: {exc}")
                 return
