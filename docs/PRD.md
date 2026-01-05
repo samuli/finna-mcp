@@ -103,6 +103,51 @@ Use these in `filters.include.format` when narrowing by type:
 - Confirm where `record_format` is exposed (likely in `rawData`); use it to drive format-specific pruning.
 - Identify availability endpoint (if any) and whether it can be called uniformly across orgs.
 
+## Local MCP Evaluation (2026-01-05)
+### Use cases tested (local MCP vs Finna API)
+- Simple topical search: `search_records(lookfor="sibelius", limit=3)`
+  - MCP `resultCount` matches API (44,850). Top IDs differ from API, likely due to ranking differences and default field set.
+  - MCP records include `recordUrl` (Finna record page) by default.
+- Multi-term query: `search_records(search_mode="advanced", advanced_operator="AND", lookfor="deep learning algorithm")`
+  - MCP `resultCount` matches API (2,061). Top IDs differ but overlap exists.
+  - Advanced mode successfully expands terms into Finna’s advanced query parameters.
+- Organization lookup: `list_organizations(lookfor="Rauma")`
+  - MCP returns hierarchical results with nested nodes (`Satakirjastot > Rauma > Rauman pääkirjasto`).
+- Unfiltered org list: `list_organizations()`
+  - Response is pruned to 2 levels with `meta.pruned=true` and `meta.prunedDepth=2`.
+- Count books in a system: `search_records(limit=0, filters.include.building=["0/Helmet/"], filters.include.format=["0/Book/"])`
+  - MCP `resultCount` matches API (586,769).
+- Record details + resources: `get_record(ids=[<id>])` and `extract_resources(ids=[<id>])`
+  - `recordUrl` included by default.
+  - If a record has no images/urls, resource counts may be pruned to `null` (by design).
+
+### Pros
+- LLM-friendly filters and defaults keep payloads smaller (no buildings by default in search).
+- `recordUrl` provides an immediate user-facing link.
+- Advanced search mode supports multi-term AND/OR.
+- Organization lookup returns the hierarchical building tree with usable facet values.
+- Pruning prevents unfiltered org results from overwhelming the model.
+
+### Cons / limitations
+- Ranking differences vs API top hits (expected; may confuse comparisons).
+- `list_organizations` depends on Finna UI HTML; brittle if UI structure changes.
+- Unfiltered org list is still large even after pruning (many top-level items).
+- No availability/holdings integration yet.
+- Local dev can surface upstream 502s; now returned as MCP errors but still visible.
+
+### Improvements implemented after first evaluation
+- **list_organizations max_depth**: optional `max_depth` parameter to control hierarchy depth.
+  - Example: `list_organizations(max_depth=3)` returns 3 levels and sets `meta.prunedDepth=3`.
+
+### Re-evaluation after improvements
+- `list_organizations(max_depth=3)` now returns grandchildren while still pruning deeper nodes.
+  - `meta.pruned=true`, `meta.prunedDepth=3`, `meta.reason="max_depth"`.
+
+### Further improvement ideas
+- Auto-suggest `search_mode="advanced"` for multi-term free-text queries.
+- Add a holdings/availability tool (Finna holdings/JSON or per-org endpoints).
+- Provide an optional “compact” org list mode with top-level only + search hint.
+
 ## Users
 - TODO
 
