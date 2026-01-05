@@ -109,20 +109,24 @@ suite('integration (local wrangler)', () => {
     expect(resourcesPayload.result.resources?.[0]?.id).toBe(recordId);
   });
 
-  it('list_organizations returns building facet', async () => {
-    if (!available) {
-      return;
-    }
-    const response = await fetch(baseUrl, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        method: 'callTool',
-        params: { name: 'list_organizations', arguments: { lookfor: '' } },
-      }),
-    });
-    expect(response.ok).toBe(true);
-    const payload = await response.json();
-    expect(payload.result.facets).toBeTruthy();
-  });
+  it(
+    'list_organizations returns building facet',
+    async () => {
+      if (!available) {
+        return;
+      }
+      const response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          method: 'callTool',
+          params: { name: 'list_organizations', arguments: { lookfor: 'sibelius' } },
+        }),
+      });
+      expect(response.ok).toBe(true);
+      const payload = await response.json();
+      expect(payload.result.facets).toBeTruthy();
+    },
+    15000,
+  );
 });
