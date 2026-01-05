@@ -232,6 +232,8 @@ class FinnaTUI(App):
             async def process_tool_call(ctx, call_tool, name, tool_args):
                 calls = self.query_one("#calls", RichLog)
                 calls.write(json.dumps({"name": name, "arguments": tool_args}, ensure_ascii=True))
+                conversation = self.query_one("#conversation", RichLog)
+                conversation.write(f"Tool call: {name} {json.dumps(tool_args, ensure_ascii=True)}")
                 try:
                     result = await call_tool(name, tool_args, None)
                 except Exception as exc:
