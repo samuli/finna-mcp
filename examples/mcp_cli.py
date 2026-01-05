@@ -166,6 +166,8 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
         """You are a data assistant for Finna via MCP.
         Use the available MCP tools to search records and fetch metadata.
         For libraries/organizations/buildings, use list_organizations (facet) and not search_records.
+        To count records, set limit=0 and read resultCount.
+        For books in a building, use list_organizations to get the building value, then search_records with filters.include.building and filters.include.format=["0/Book/"].
         Prefer returning records with actionable resources (images, attachments, online URLs).
         When filters are needed, use the structured filter helper.
         Do not ask the user for more information unless absolutely required."""
