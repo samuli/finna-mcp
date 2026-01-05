@@ -196,6 +196,10 @@ class FinnaTUI(App):
       min-width: 8;
       margin-left: 1;
     }
+    #status {
+      height: 1;
+      content-align: right middle;
+    }
     """
 
     BINDINGS = [
@@ -245,6 +249,7 @@ class FinnaTUI(App):
             Button("Stop", id="stop-run"),
             id="prompt-row",
         )
+        yield Static("Idle", id="status")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -341,6 +346,7 @@ class FinnaTUI(App):
                 style="blue",
             )
             return
+        self._set_status("Running…")
         self.current_task = asyncio.create_task(self._run_agent(user_input))
 
     async def _run_agent(self, user_input: str) -> None:
@@ -360,6 +366,7 @@ class FinnaTUI(App):
             self._append_conversation(f"Assistant: {output}", style="green")
         finally:
             self.current_task = None
+            self._set_status("Idle")
 
     async def _list_models(self, force: bool = False) -> None:
         self._append_conversation("System: Fetching OpenRouter models...", style="blue")
@@ -437,6 +444,7 @@ class FinnaTUI(App):
             if self.current_task and not self.current_task.done():
                 self.current_task.cancel()
                 self._append_conversation("System: Stopping request...", style="blue")
+                self._set_status("Stopping…")
             else:
                 self._append_conversation("System: No request in progress.", style="blue")
             return
@@ -463,6 +471,12 @@ class FinnaTUI(App):
             self.query_one("#conversation", RichLog).write(Text(line, style=style))
         else:
             self.query_one("#conversation", RichLog).write(line)
+
+    def _set_status(self, text: str) -> None:
+        try:
+            self.query_one("#status", Static).update(text)
+        except Exception:
+            pass
 
     def _append_responses(self, line: str) -> None:
         self.response_lines.append(line)
