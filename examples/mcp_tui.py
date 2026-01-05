@@ -8,7 +8,7 @@ import urllib.request
 
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Footer, Header, Input, Static, TextLog
+from textual.widgets import Footer, Header, Input, Static, Log
 
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPServerStreamableHTTP
@@ -110,11 +110,11 @@ class FinnaTUI(App):
         yield Header(show_clock=True)
         yield Vertical(
             Static("Conversation", id="conversation-label"),
-            TextLog(id="conversation", highlight=True, markup=True),
+            Log(id="conversation", highlight=True, markup=True),
             Static("MCP Calls", id="calls-label"),
-            TextLog(id="calls", highlight=True, markup=True),
+            Log(id="calls", highlight=True, markup=True),
             Static("MCP Responses", id="responses-label"),
-            TextLog(id="responses", highlight=True, markup=True),
+            Log(id="responses", highlight=True, markup=True),
         )
         yield Input(placeholder="Ask a question (/clear, /exit, /models, /model <id>)", id="prompt")
         yield Footer()
@@ -130,15 +130,15 @@ class FinnaTUI(App):
                 return
 
             async def process_tool_call(ctx, call_tool, name, tool_args):
-                calls = self.query_one("#calls", TextLog)
+                calls = self.query_one("#calls", Log)
                 calls.write(json.dumps({"name": name, "arguments": tool_args}, ensure_ascii=True))
                 try:
                     result = await call_tool(name, tool_args, None)
                 except Exception as exc:
-                    responses = self.query_one("#responses", TextLog)
+                    responses = self.query_one("#responses", Log)
                     responses.write(str(exc))
                     raise
-                responses = self.query_one("#responses", TextLog)
+                responses = self.query_one("#responses", Log)
                 responses.write(json.dumps(result, ensure_ascii=True, default=str))
                 return result
 
@@ -167,9 +167,9 @@ class FinnaTUI(App):
             await self.action_quit()
             return
         if user_input.lower() == "/clear":
-            self.query_one("#conversation", TextLog).clear()
-            self.query_one("#calls", TextLog).clear()
-            self.query_one("#responses", TextLog).clear()
+            self.query_one("#conversation", Log).clear()
+            self.query_one("#calls", Log).clear()
+            self.query_one("#responses", Log).clear()
             return
         if user_input.lower() == "/models":
             await self._list_models()
@@ -182,7 +182,7 @@ class FinnaTUI(App):
         await self._ask_agent(user_input)
 
     async def _ask_agent(self, user_input: str) -> None:
-        conversation = self.query_one("#conversation", TextLog)
+        conversation = self.query_one("#conversation", Log)
         conversation.write(f"[bold cyan]User:[/bold cyan] {user_input}")
         await self._ensure_agent()
         assert self.agent is not None
@@ -195,7 +195,7 @@ class FinnaTUI(App):
         conversation.write(f"[bold green]Assistant:[/bold green] {output}")
 
     async def _list_models(self) -> None:
-        conversation = self.query_one("#conversation", TextLog)
+        conversation = self.query_one("#conversation", Log)
         conversation.write("[bold yellow]System:[/bold yellow] Fetching OpenRouter models...")
         try:
             models = await asyncio.to_thread(_fetch_openrouter_models)
@@ -216,7 +216,7 @@ class FinnaTUI(App):
                 chosen = self.model_options[index - 1].get("id")
         else:
             chosen = selection
-        conversation = self.query_one("#conversation", TextLog)
+        conversation = self.query_one("#conversation", Log)
         if not chosen:
             conversation.write("[bold red]System:[/bold red] Invalid model selection.")
             return
