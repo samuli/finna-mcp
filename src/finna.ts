@@ -8,6 +8,8 @@ type SearchParams = {
   apiBase?: string;
   lookfor: string;
   type: string;
+  searchMode?: 'simple' | 'advanced';
+  advancedOperator?: 'AND' | 'OR';
   page?: number;
   limit?: number;
   sort?: string;
@@ -38,8 +40,13 @@ const DEFAULT_API_BASE = 'https://api.finna.fi/v1';
 
 export function buildSearchUrl(params: SearchParams): string {
   const url = new URL(`${baseUrl(params.apiBase)}/search`);
-  url.searchParams.set('lookfor', params.lookfor);
-  url.searchParams.set('type', params.type);
+  const lookfor = params.lookfor ?? '';
+  if (params.searchMode === 'advanced' && lookfor.trim()) {
+    appendAdvancedSearch(url, lookfor, params.type, params.advancedOperator);
+  } else {
+    url.searchParams.set('lookfor', lookfor);
+    url.searchParams.set('type', params.type);
+  }
   if (params.page) {
     url.searchParams.set('page', String(params.page));
   }
@@ -282,6 +289,42 @@ function classifyUrl(url: string): string {
     return 'video';
   }
   return 'external';
+}
+
+function appendAdvancedSearch(
+  url: URL,
+  lookfor: string,
+  type: string,
+  operator?: 'AND' | 'OR',
+) {
+  const join = operator ?? 'AND';
+  const terms = splitAdvancedTerms(lookfor);
+  if (terms.length === 0) {
+    url.searchParams.set('lookfor', lookfor);
+    url.searchParams.set('type', type);
+    return;
+  }
+  url.searchParams.set('join', join);
+  terms.forEach((term, index) => {
+    url.searchParams.append('lookfor0[]', term);
+    url.searchParams.append('type0[]', type);
+    if (index > 0) {
+      url.searchParams.append('bool0[]', join);
+    }
+  });
+}
+
+function splitAdvancedTerms(query: string): string[] {
+  const terms: string[] = [];
+  const pattern = /"([^"]+)"|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(query)) !== null) {
+    const term = (match[1] ?? match[2] ?? '').trim();
+    if (term) {
+      terms.push(term);
+    }
+  }
+  return terms;
 }
 
 function appendFields(url: URL, fields?: string[]) {

@@ -51,9 +51,14 @@ const SEARCH_SORT_OPTIONS = [
   'year_oldest',
 ] as const;
 
+const SEARCH_MODE_OPTIONS = ['simple', 'advanced'] as const;
+const ADVANCED_OPERATOR_OPTIONS = ['AND', 'OR'] as const;
+
 const SearchRecordsArgs = z.object({
   lookfor: z.string().default(''),
   type: z.string().default('AllFields'),
+  search_mode: z.enum(SEARCH_MODE_OPTIONS).optional(),
+  advanced_operator: z.enum(ADVANCED_OPERATOR_OPTIONS).optional(),
   page: z.number().int().min(1).optional(),
   limit: z.number().int().min(0).max(100).optional(),
   sort: z.enum(SEARCH_SORT_OPTIONS).optional(),
@@ -91,12 +96,20 @@ const ListToolsResponse = {
     {
       name: 'search_records',
       description:
-        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead. lookfor uses Solr/Lucene-style query syntax over limited metadata fields; use lookfor="" or "*" when you only need counts by filters. To count records, set limit=0 and read resultCount. For books: use filters.include.format=["0/Book/"] (format codes) and a building filter from list_organizations. Sort options: "relevance" (default), "newest" (recently added to Finna), "oldest" (earliest added), "year_newest" (newest publication/creation year), "year_oldest" (oldest year).',
+        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead. lookfor uses Solr/Lucene-style query syntax over limited metadata fields; use lookfor="" or "*" when you only need counts by filters. To count records, set limit=0 and read resultCount. For books: use filters.include.format=["0/Book/"] (format codes) and a building filter from list_organizations. Sort options: "relevance" (default), "newest" (recently added to Finna), "oldest" (earliest added), "year_newest" (newest publication/creation year), "year_oldest" (oldest year). For multi-term queries, set search_mode="advanced" with advanced_operator="AND" or "OR".',
       inputSchema: {
         type: 'object',
         properties: {
           lookfor: { type: 'string' },
           type: { type: 'string' },
+          search_mode: {
+            type: 'string',
+            description: 'Search mode: "simple" (default) or "advanced" (multi-term).',
+          },
+          advanced_operator: {
+            type: 'string',
+            description: 'Operator for advanced mode: "AND" (default) or "OR".',
+          },
           page: { type: 'number' },
           limit: { type: 'number' },
           sort: {
@@ -273,6 +286,8 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   const {
     lookfor,
     type,
+    search_mode,
+    advanced_operator,
     page,
     limit,
     sort,
@@ -290,6 +305,8 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     apiBase: env.FINNA_API_BASE,
     lookfor,
     type,
+    searchMode: search_mode,
+    advancedOperator: advanced_operator,
     page,
     limit,
     sort: normalizedSort,
