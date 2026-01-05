@@ -203,10 +203,7 @@ export default {
 
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object') {
-      return new Response(JSON.stringify({ error: 'invalid_request' }), {
-        status: 400,
-        headers: { 'content-type': 'application/json' },
-      });
+      return json({ error: 'invalid_request' });
     }
 
     if (isJsonRpc(body)) {
@@ -220,12 +217,12 @@ export default {
     if (body.method === 'callTool') {
       const parsed = CallToolSchema.safeParse(body.params);
       if (!parsed.success) {
-        return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
+        return json({ error: 'invalid_params', details: parsed.error.format() });
       }
 
       const { name, arguments: args } = parsed.data;
       if (!toolNames.includes(name)) {
-        return json({ error: 'unknown_tool' }, 400);
+        return json({ error: 'unknown_tool' });
       }
 
       try {
@@ -240,11 +237,11 @@ export default {
             return await handleExtractResources(env, args);
         }
       } catch (error) {
-        return json({ error: 'upstream_error', message: errorMessage(error) }, 502);
+        return json({ error: 'upstream_error', message: errorMessage(error) });
       }
     }
 
-    return json({ error: 'unknown_method' }, 400);
+    return json({ error: 'unknown_method' });
   },
 };
 
@@ -1081,13 +1078,13 @@ async function handleJsonRpc(body: JsonRpcRequest, env: Env): Promise<Response> 
     if (!parsed.success) {
       return json(
         jsonRpcError(id, -32602, 'Invalid params', parsed.error.format()),
-        400,
+        200,
       );
     }
 
     const { name, arguments: args } = parsed.data;
     if (!toolNames.includes(name)) {
-      return json(jsonRpcError(id, -32601, 'Method not found'), 404);
+      return json(jsonRpcError(id, -32601, 'Method not found'), 200);
     }
 
     try {
@@ -1108,12 +1105,12 @@ async function handleJsonRpc(body: JsonRpcRequest, env: Env): Promise<Response> 
           structuredContent: { error: 'upstream_error', message },
           isError: true,
         }),
-        502,
+        200,
       );
     }
   }
 
-  return json(jsonRpcError(id, -32601, 'Method not found'), 404);
+  return json(jsonRpcError(id, -32601, 'Method not found'), 200);
 }
 
 function isJsonRpc(body: unknown): body is JsonRpcRequest {
