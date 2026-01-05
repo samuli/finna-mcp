@@ -110,11 +110,11 @@ class FinnaTUI(App):
         yield Header(show_clock=True)
         yield Vertical(
             Static("Conversation", id="conversation-label"),
-            Log(id="conversation", highlight=True, markup=True),
+            Log(id="conversation", highlight=True),
             Static("MCP Calls", id="calls-label"),
-            Log(id="calls", highlight=True, markup=True),
+            Log(id="calls", highlight=True),
             Static("MCP Responses", id="responses-label"),
-            Log(id="responses", highlight=True, markup=True),
+            Log(id="responses", highlight=True),
         )
         yield Input(placeholder="Ask a question (/clear, /exit, /models, /model <id>)", id="prompt")
         yield Footer()
@@ -183,28 +183,28 @@ class FinnaTUI(App):
 
     async def _ask_agent(self, user_input: str) -> None:
         conversation = self.query_one("#conversation", Log)
-        conversation.write(f"[bold cyan]User:[/bold cyan] {user_input}")
+        conversation.write(f"User: {user_input}")
         await self._ensure_agent()
         assert self.agent is not None
         try:
             result = await self.agent.run(user_input)
         except Exception as exc:
-            conversation.write(f"[bold red]Error:[/bold red] {exc}")
+            conversation.write(f"Error: {exc}")
             return
         output = result.output if hasattr(result, "output") else str(result)
-        conversation.write(f"[bold green]Assistant:[/bold green] {output}")
+        conversation.write(f"Assistant: {output}")
 
     async def _list_models(self) -> None:
         conversation = self.query_one("#conversation", Log)
-        conversation.write("[bold yellow]System:[/bold yellow] Fetching OpenRouter models...")
+        conversation.write("System: Fetching OpenRouter models...")
         try:
             models = await asyncio.to_thread(_fetch_openrouter_models)
         except Exception as exc:
-            conversation.write(f"[bold red]System:[/bold red] Failed to fetch models: {exc}")
+            conversation.write(f"System: Failed to fetch models: {exc}")
             return
         self.model_options = models
         for line in _format_model_list(models):
-            conversation.write(f"[bold yellow]{line}[/bold yellow]")
+            conversation.write(line)
 
     async def _select_model(self, selection: str) -> None:
         if not selection:
@@ -223,7 +223,7 @@ class FinnaTUI(App):
         self.model = chosen
         if self.agent:
             self.agent.model = chosen
-        conversation.write(f"[bold yellow]System:[/bold yellow] Selected model {chosen}")
+        conversation.write(f"System: Selected model {chosen}")
 
     def _append_history(self, user_input: str) -> None:
         self.history_entries.append(user_input)
