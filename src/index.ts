@@ -325,6 +325,18 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   }
   const { lookfor, type, lng, filters } = parsed.data;
   const normalizedFilters = normalizeFilters(filters);
+  const cacheLng = lng ?? 'fi';
+  const cacheKey = buildOrganizationsCacheKey(cacheLng, type);
+  const cached = await readOrganizationsCache(env, cacheKey);
+  if (cached) {
+    if (!lookfor && !normalizedFilters) {
+      return json({ result: cached });
+    }
+    const filtered = filterOrganizationsPayload(cached, lookfor, normalizedFilters);
+    if (filtered) {
+      return json({ result: filtered });
+    }
+  }
   const url = buildFacetUrl({
     apiBase: env.FINNA_API_BASE,
     lookfor,
@@ -335,7 +347,11 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   });
 
   const payload = await fetchJson(url);
-  return json({ result: stripFacetHrefs(payload) });
+  const cleaned = stripFacetHrefs(payload);
+  if (!lookfor && !normalizedFilters) {
+    await writeOrganizationsCache(env, cacheKey, cleaned);
+  }
+  return json({ result: cleaned });
 }
 
 function normalizeFilters(filters?: unknown): FilterInput | undefined {
@@ -458,6 +474,113 @@ function stripHrefDeep(value: unknown): unknown {
     return output;
   }
   return value;
+}
+
+const ORGANIZATIONS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function buildOrganizationsCacheKey(lng: string, type: string): string {
+  return `list_organizations:${lng}:${type}`;
+}
+
+async function readOrganizationsCache(
+  env: Env,
+  key: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const object = await env.CACHE_BUCKET.get(key);
+    if (!object) {
+      return null;
+    }
+    const text = await object.text();
+    const parsed = JSON.parse(text) as { ts?: number; payload?: Record<string, unknown> };
+    const ts = typeof parsed.ts === 'number' ? parsed.ts : 0;
+    if (!parsed.payload || Date.now() - ts > ORGANIZATIONS_CACHE_TTL_MS) {
+      return null;
+    }
+    return parsed.payload;
+  } catch {
+    return null;
+  }
+}
+
+async function writeOrganizationsCache(
+  env: Env,
+  key: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await env.CACHE_BUCKET.put(
+      key,
+      JSON.stringify({ ts: Date.now(), payload }),
+    );
+  } catch {
+    // Best-effort cache write.
+  }
+}
+
+function filterOrganizationsPayload(
+  payload: Record<string, unknown>,
+  lookfor: string,
+  filters?: FilterInput,
+): Record<string, unknown> | null {
+  const facets = payload.facets as Record<string, unknown> | undefined;
+  const entries = facets?.building;
+  if (!Array.isArray(entries)) {
+    return null;
+  }
+  if (!filters && !lookfor) {
+    return payload;
+  }
+
+  if (filters) {
+    const keys = [
+      ...Object.keys(filters.include ?? {}),
+      ...Object.keys(filters.any ?? {}),
+      ...Object.keys(filters.exclude ?? {}),
+    ];
+    if (keys.some((key) => key !== 'building')) {
+      return null;
+    }
+  }
+
+  let result = entries.slice();
+  if (lookfor) {
+    const query = lookfor.toLowerCase();
+    result = result.filter((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return false;
+      }
+      const value = String((entry as Record<string, unknown>).value ?? '');
+      const translated = String((entry as Record<string, unknown>).translated ?? '');
+      return (
+        value.toLowerCase().includes(query) ||
+        translated.toLowerCase().includes(query)
+      );
+    });
+  }
+
+  const includeValues = new Set(filters?.include?.building ?? []);
+  const anyValues = new Set(filters?.any?.building ?? []);
+  const excludeValues = new Set(filters?.exclude?.building ?? []);
+
+  if (includeValues.size > 0) {
+    result = result.filter((entry) => includeValues.has((entry as any).value));
+  }
+  if (anyValues.size > 0) {
+    result = result.filter((entry) => anyValues.has((entry as any).value));
+  }
+  if (excludeValues.size > 0) {
+    result = result.filter((entry) => !excludeValues.has((entry as any).value));
+  }
+
+  return {
+    ...payload,
+    resultCount: result.length,
+    facets: {
+      ...facets,
+      building: result,
+    },
+  };
 }
 
 async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
