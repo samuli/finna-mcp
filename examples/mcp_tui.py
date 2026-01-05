@@ -275,8 +275,11 @@ class FinnaTUI(App):
                     self._append_responses(_format_error(exc))
                     raise
                 response_text = json.dumps(result, ensure_ascii=True, default=str)
+                args_text = json.dumps(tool_args, ensure_ascii=True)
                 size_kb = len(response_text.encode("utf-8")) / 1024
-                self._append_responses(f"[{size_kb:.1f} KB] {response_text}")
+                self._append_responses(
+                    f"[{size_kb:.1f} KB] {name} {args_text} -> {response_text}"
+                )
                 return result
 
             self.server = MCPServerStreamableHTTP(self.mcp_url, process_tool_call=process_tool_call)
