@@ -509,7 +509,7 @@ function stripHrefDeep(value: unknown): unknown {
 const ORGANIZATIONS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function buildOrganizationsCacheKey(lng: string, type: string): string {
-  return `list_organizations:ui:v1:${lng}:${type}`;
+  return `list_organizations:${lng}:${type}`;
 }
 
 async function readOrganizationsCache(
