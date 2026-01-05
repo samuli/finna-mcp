@@ -158,7 +158,25 @@ describe('worker', () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch.mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ status: 'OK', facets: { building: [{ value: '1/KANSA/', count: 3 }] } }),
+        JSON.stringify({
+          data: {
+            facets: {
+              building: {
+                html: `
+                  <ul class="facet-tree">
+                    <li>
+                      <span class="facet js-facet-item facetOR">
+                        <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%221%2FKANSA%2F%22" data-title="KANSA" data-count="3">
+                          <span class="facet-value icon-link__label">KANSA</span>
+                        </a>
+                      </span>
+                    </li>
+                  </ul>
+                `,
+              },
+            },
+          },
+        }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
     );
@@ -179,8 +197,9 @@ describe('worker', () => {
     const payload = await response.json();
     expect(payload.result.facets.building.length).toBe(1);
     const calledUrl = String(mockFetch.mock.calls[0][0]);
-    expect(calledUrl).toContain('facet%5B%5D=building');
-    expect(calledUrl).toContain('limit=0');
+    expect(calledUrl).toContain('/AJAX/JSON');
+    expect(calledUrl).toContain('method=getSideFacets');
+    expect(calledUrl).toContain('enabledFacets%5B%5D=building');
     // list_organizations always fetches the full facet list and filters locally.
   });
 
@@ -254,7 +273,7 @@ describe('worker', () => {
     expect(payload.result.resources[0].resources.length).toBe(2);
   });
 
-  it('list_organizations_ui parses hierarchy from UI HTML', async () => {
+  it('list_organizations parses hierarchy from UI HTML', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     const fixture = JSON.stringify({
       data: {
@@ -297,7 +316,7 @@ describe('worker', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         method: 'callTool',
-        params: { name: 'list_organizations_ui', arguments: { lookfor: 'Seinäjoki' } },
+        params: { name: 'list_organizations', arguments: { lookfor: 'Seinäjoki' } },
       }),
     });
 

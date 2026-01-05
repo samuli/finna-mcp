@@ -20,7 +20,6 @@ const toolNames = [
   'search_records',
   'get_record',
   'list_organizations',
-  'list_organizations_ui',
   'extract_resources',
 ] as const;
 
@@ -67,12 +66,6 @@ const ListOrganizationsArgs = z.object({
   type: z.string().default('AllFields'),
   lng: z.string().optional(),
   filters: FilterSchema,
-});
-
-const ListOrganizationsUiArgs = z.object({
-  lookfor: z.string().default(''),
-  type: z.string().default('AllFields'),
-  lng: z.string().optional(),
 });
 
 const ExtractResourcesArgs = z.object({
@@ -147,19 +140,6 @@ const ListToolsResponse = {
       },
     },
     {
-      name: 'list_organizations_ui',
-      description:
-        'Experimental: fetches the organization hierarchy used by the Finna UI and returns a building tree (best-effort HTML parsing).',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          lookfor: { type: 'string' },
-          type: { type: 'string' },
-          lng: { type: 'string' },
-        },
-      },
-    },
-    {
       name: 'extract_resources',
       description: 'Extract and summarize resource links for record ids.',
       inputSchema: {
@@ -221,8 +201,6 @@ export default {
             return await handleGetRecord(env, args);
           case 'list_organizations':
             return await handleListOrganizations(env, args);
-          case 'list_organizations_ui':
-            return await handleListOrganizationsUi(env, args);
           case 'extract_resources':
             return await handleExtractResources(env, args);
         }
@@ -370,41 +348,21 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
       return json({ result: filtered });
     }
   }
-  const url = buildFacetUrl({
-    apiBase: env.FINNA_API_BASE,
-    lookfor: '',
-    type,
-    lng,
-    filters: undefined,
-    facet: 'building',
-  });
-
-  const payload = await fetchJson(url);
-  const cleaned = stripFacetHrefs(payload);
-  const filtered = filterOrganizationsPayload(cleaned, lookfor, normalizedFilters);
-  if (filtered) {
-    if (env.FINNA_MCP_DISABLE_CACHE !== '1') {
-      await writeOrganizationsCache(env, cacheKey, cleaned);
-    }
-    return json({ result: filtered });
+  const uiPayload = await fetchUiOrganizations(cacheLng, type, env.FINNA_UI_BASE);
+  const filtered = filterOrganizationsPayload(uiPayload, lookfor, normalizedFilters);
+  if (env.FINNA_MCP_DISABLE_CACHE !== '1') {
+    await writeOrganizationsCache(env, cacheKey, uiPayload);
   }
-  if (!lookfor && !normalizedFilters) {
-    if (env.FINNA_MCP_DISABLE_CACHE !== '1') {
-      await writeOrganizationsCache(env, cacheKey, cleaned);
-    }
-  }
-  return json({ result: cleaned });
+  return json({ result: filtered ?? uiPayload });
 }
 
-async function handleListOrganizationsUi(env: Env, args: unknown): Promise<Response> {
-  const parsed = ListOrganizationsUiArgs.safeParse(args ?? {});
-  if (!parsed.success) {
-    return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
-  }
-  const { lookfor, type, lng } = parsed.data;
-  const uiBase = env.FINNA_UI_BASE ?? 'https://finna.fi';
-  const url = new URL('/AJAX/JSON', uiBase);
-  url.searchParams.set('lookfor', lookfor);
+async function fetchUiOrganizations(
+  lng: string,
+  type: string,
+  uiBase?: string,
+): Promise<Record<string, unknown>> {
+  const url = new URL('/AJAX/JSON', uiBase ?? 'https://finna.fi');
+  url.searchParams.set('lookfor', '');
   url.searchParams.set('type', type);
   url.searchParams.set('method', 'getSideFacets');
   url.searchParams.set('searchClassId', 'Solr');
@@ -420,21 +378,10 @@ async function handleListOrganizationsUi(env: Env, args: unknown): Promise<Respo
   const payload = await fetchJson(url.toString());
   const html = findHtmlInAjaxPayload(payload);
   if (!html) {
-    return json({
-      result: {
-        status: 'ERROR',
-        message: 'No HTML found in UI facet response.',
-      },
-    });
+    return { status: 'ERROR', facets: { building: [] } };
   }
   const tree = parseFacetTreeFromHtml(html);
-  return json({
-    result: {
-      status: 'OK',
-      facets: { building: tree },
-      rawHtmlLength: html.length,
-    },
-  });
+  return { status: 'OK', resultCount: tree.length, facets: { building: tree } };
 }
 
 function normalizeFilters(filters?: unknown): FilterInput | undefined {
@@ -703,7 +650,7 @@ function filterFacetEntry(
   excludeValues: Set<string>,
 ): { kept: boolean; node: Record<string, unknown> } {
   const value = String(entry.value ?? '');
-  const translated = String(entry.translated ?? '');
+  const translated = String(entry.translated ?? entry.label ?? '');
   const valueLower = value.toLowerCase();
   const translatedLower = translated.toLowerCase();
   const foldedValue = foldFinnish(valueLower);
@@ -1103,8 +1050,6 @@ async function dispatchTool(
       return await unwrapResult(handleGetRecord(env, args));
     case 'list_organizations':
       return await unwrapResult(handleListOrganizations(env, args));
-    case 'list_organizations_ui':
-      return await unwrapResult(handleListOrganizationsUi(env, args));
     case 'extract_resources':
       return await unwrapResult(handleExtractResources(env, args));
   }
