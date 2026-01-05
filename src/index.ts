@@ -323,27 +323,25 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
 }
 
 function stripFacetHrefs(payload: Record<string, unknown>): Record<string, unknown> {
-  if (!payload.facets || !Array.isArray(payload.facets)) {
-    return payload;
+  return stripHrefDeep(payload) as Record<string, unknown>;
+}
+
+function stripHrefDeep(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripHrefDeep(item));
   }
-  const cleaned = payload.facets.map((facet) => {
-    if (!facet || typeof facet !== 'object') {
-      return facet;
-    }
-    const entries = (facet as { data?: unknown }).data;
-    if (!Array.isArray(entries)) {
-      return facet;
-    }
-    const updated = entries.map((entry) => {
-      if (!entry || typeof entry !== 'object') {
-        return entry;
+  if (value && typeof value === 'object') {
+    const input = value as Record<string, unknown>;
+    const output: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(input)) {
+      if (key === 'href') {
+        continue;
       }
-      const { href, ...rest } = entry as Record<string, unknown>;
-      return rest;
-    });
-    return { ...(facet as Record<string, unknown>), data: updated };
-  });
-  return { ...payload, facets: cleaned };
+      output[key] = stripHrefDeep(val);
+    }
+    return output;
+  }
+  return value;
 }
 
 async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
