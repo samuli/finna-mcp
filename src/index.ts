@@ -150,7 +150,7 @@ const ListToolsResponse = {
     {
       name: 'list_organizations',
       description:
-        'List organizations/buildings (e.g., libraries) using the Finna building facet. Use the returned value strings in search_records filters.include.building.',
+        'List organizations/buildings (e.g., libraries) using the Finna building facet. Use the returned value strings in search_records filters.include.building. Unfiltered results return only the top 2 levels with meta.pruned=true; use lookfor/filters for deeper levels.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -362,7 +362,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
       : await readOrganizationsCache(env, cacheKey);
   if (cached) {
     if (!lookfor && !normalizedFilters) {
-      return json({ result: cached });
+      return json({ result: pruneOrganizationsDepth(cached, 2, 'unfiltered') });
     }
     const filtered = filterOrganizationsPayload(cached, lookfor, normalizedFilters);
     if (filtered) {
@@ -374,7 +374,11 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   if (env.FINNA_MCP_DISABLE_CACHE !== '1') {
     await writeOrganizationsCache(env, cacheKey, uiPayload);
   }
-  return json({ result: filtered ?? uiPayload });
+  const result = filtered ?? uiPayload;
+  if (!lookfor && !normalizedFilters) {
+    return json({ result: pruneOrganizationsDepth(result, 2, 'unfiltered') });
+  }
+  return json({ result });
 }
 
 async function fetchUiOrganizations(
@@ -626,6 +630,63 @@ function filterOrganizationsPayload(
       building: result,
     },
   };
+}
+
+function pruneOrganizationsDepth(
+  payload: Record<string, unknown>,
+  maxDepth: number,
+  reason: string,
+): Record<string, unknown> {
+  const facets = payload.facets as Record<string, unknown> | undefined;
+  const entries = facets?.building;
+  if (!Array.isArray(entries) || entries.length === 0 || maxDepth < 1) {
+    return payload;
+  }
+  const { pruned, prunedCount } = pruneFacetEntriesDepth(entries, maxDepth, 0);
+  return {
+    ...payload,
+    facets: {
+      ...facets,
+      building: pruned,
+    },
+    meta: {
+      ...(payload.meta as Record<string, unknown> | undefined),
+      pruned: true,
+      prunedDepth: maxDepth,
+      prunedCount,
+      reason,
+    },
+  };
+}
+
+function pruneFacetEntriesDepth(
+  entries: unknown[],
+  maxDepth: number,
+  depth: number,
+): { pruned: unknown[]; prunedCount: number } {
+  let prunedCount = 0;
+  const pruned = entries.map((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return entry;
+    }
+    const record = entry as Record<string, unknown>;
+    const children = record.children;
+    if (!Array.isArray(children) || children.length === 0) {
+      return record;
+    }
+    if (depth >= maxDepth - 1) {
+      prunedCount += children.length;
+      const { children: _omit, ...rest } = record;
+      return rest;
+    }
+    const next = pruneFacetEntriesDepth(children, maxDepth, depth + 1);
+    prunedCount += next.prunedCount;
+    return {
+      ...record,
+      children: next.pruned,
+    };
+  });
+  return { pruned, prunedCount };
 }
 
 function buildLookforVariants(query: string): string[] {
