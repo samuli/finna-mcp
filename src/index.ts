@@ -339,7 +339,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
     env.FINNA_MCP_DISABLE_CACHE === '1'
       ? null
       : await readOrganizationsCache(env, cacheKey);
-  if (cached && isUiHierarchyPayload(cached)) {
+  if (cached) {
     if (!lookfor && !normalizedFilters) {
       return json({ result: cached });
     }
@@ -596,27 +596,6 @@ function filterOrganizationsPayload(
       building: result,
     },
   };
-}
-
-function isUiHierarchyPayload(payload: Record<string, unknown>): boolean {
-  const facets = payload.facets as Record<string, unknown> | undefined;
-  const entries = facets?.building;
-  if (!Array.isArray(entries) || entries.length === 0) {
-    return false;
-  }
-  const sample = entries.slice(0, 20);
-  for (const entry of sample) {
-    if (!entry || typeof entry !== 'object') {
-      continue;
-    }
-    if ('label' in (entry as Record<string, unknown>)) {
-      return true;
-    }
-    if (Array.isArray((entry as Record<string, unknown>).children)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function buildLookforVariants(query: string): string[] {
