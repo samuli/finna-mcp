@@ -344,17 +344,70 @@ function normalizeFilters(filters?: unknown): FilterInput | undefined {
   }
   const candidate = filters as Record<string, unknown>;
   if ('include' in candidate || 'any' in candidate || 'exclude' in candidate) {
-    return candidate as FilterInput;
+    const include = normalizeFilterBucket(candidate.include);
+    const any = normalizeFilterBucket(candidate.any);
+    const exclude = normalizeFilterBucket(candidate.exclude);
+    const normalized: FilterInput = {};
+    if (include) {
+      normalized.include = include;
+    }
+    if (any) {
+      normalized.any = any;
+    }
+    if (exclude) {
+      normalized.exclude = exclude;
+    }
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
   }
   const include: Record<string, string[]> = {};
   for (const [key, value] of Object.entries(candidate)) {
+    const mappedKey = mapFilterField(key);
     if (Array.isArray(value)) {
-      include[key] = value.filter((item) => typeof item === 'string') as string[];
+      include[mappedKey] = (value.filter((item) => typeof item === 'string') as string[]).map(
+        (item) => mapFilterValue(mappedKey, item),
+      );
     } else if (typeof value === 'string') {
-      include[key] = [value];
+      include[mappedKey] = [mapFilterValue(mappedKey, value)];
     }
   }
   return Object.keys(include).length > 0 ? { include } : undefined;
+}
+
+function normalizeFilterBucket(
+  bucket: unknown,
+): Record<string, string[]> | undefined {
+  if (!bucket || typeof bucket !== 'object') {
+    return undefined;
+  }
+  const include: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(bucket as Record<string, unknown>)) {
+    const mappedKey = mapFilterField(key);
+    if (Array.isArray(value)) {
+      const mapped = (value.filter((item) => typeof item === 'string') as string[]).map(
+        (item) => mapFilterValue(mappedKey, item),
+      );
+      if (mapped.length > 0) {
+        include[mappedKey] = mapped;
+      }
+    } else if (typeof value === 'string') {
+      include[mappedKey] = [mapFilterValue(mappedKey, value)];
+    }
+  }
+  return Object.keys(include).length > 0 ? include : undefined;
+}
+
+function mapFilterField(field: string): string {
+  if (field === 'building_str_mv') {
+    return 'building';
+  }
+  return field;
+}
+
+function mapFilterValue(field: string, value: string): string {
+  if (field === 'format' && value.toLowerCase() === 'book') {
+    return '0/Book/';
+  }
+  return value;
 }
 
 function stripFacetHrefs(payload: Record<string, unknown>): Record<string, unknown> {
