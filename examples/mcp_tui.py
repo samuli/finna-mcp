@@ -333,7 +333,11 @@ class FinnaTUI(App):
                 )
                 return result
 
-            self.server = MCPServerStreamableHTTP(self.mcp_url, process_tool_call=process_tool_call)
+            self.server = MCPServerStreamableHTTP(
+                self.mcp_url,
+                process_tool_call=process_tool_call,
+                max_retries=2,
+            )
             await self.server.__aenter__()
             self.agent = Agent(self.model, toolsets=[self.server], instructions=self._instructions())
 
@@ -347,6 +351,7 @@ class FinnaTUI(App):
             "For books in a building, use list_organizations to get the building value, then search_records with filters.include.building and filters.include.format=[\"0/Book/\"]. "
             "Prefer returning records with actionable resources (images, attachments, online URLs). "
             "When filters are needed, use the structured filter helper. "
+            "Tool arguments must be a single valid JSON object with no trailing characters. "
             "Do not ask the user for more information unless absolutely required."
         )
 

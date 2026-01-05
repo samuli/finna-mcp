@@ -171,6 +171,7 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
         For books in a building, use list_organizations to get the building value, then search_records with filters.include.building and filters.include.format=["0/Book/"].
         Prefer returning records with actionable resources (images, attachments, online URLs).
         When filters are needed, use the structured filter helper.
+        Tool arguments must be a single valid JSON object with no trailing characters.
         Do not ask the user for more information unless absolutely required."""
     )
 
@@ -199,7 +200,11 @@ async def run_cli(question: str, mcp_url: str, model: str) -> None:
         print(json.dumps(result, indent=2, ensure_ascii=True, default=str), flush=True)
         return result
 
-    server = MCPServerStreamableHTTP(mcp_url, process_tool_call=process_tool_call)
+    server = MCPServerStreamableHTTP(
+        mcp_url,
+        process_tool_call=process_tool_call,
+        max_retries=2,
+    )
     async with server:
         agent = Agent(model, toolsets=[server], instructions=instructions)
 

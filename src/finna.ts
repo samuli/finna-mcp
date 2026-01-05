@@ -84,11 +84,16 @@ export function buildFacetUrl(params: FacetParams): string {
 
 export function enrichRecordResources(record: Record<string, unknown>, sampleLimit: number) {
   const { resourceCounts, resourceSamples } = summarizeResources(record, sampleLimit);
-  return {
+  const contributors = buildContributors(record);
+  const merged = {
     ...record,
     resourceCounts,
     resourceSamples,
   };
+  if (contributors.length > 0) {
+    merged.contributors = contributors;
+  }
+  return pruneEmptyFields(merged);
 }
 
 export function extractResourcesFromRecord(
@@ -96,11 +101,12 @@ export function extractResourcesFromRecord(
   sampleLimit: number,
 ) {
   const { resources, resourceCounts } = summarizeResources(record, sampleLimit, true);
-  return {
+  const merged = {
     id: record.id,
     resourceCounts,
     resources,
   };
+  return pruneEmptyFields(merged);
 }
 
 type Resource = {
@@ -126,6 +132,86 @@ function summarizeResources(
 
   const samples = takeSamples(resources, sampleLimit);
   return { resources, resourceCounts: counts, resourceSamples: samples };
+}
+
+type Contributor = {
+  name: string;
+  role?: string;
+  type?: string;
+};
+
+function buildContributors(record: Record<string, unknown>): Contributor[] {
+  const sources: unknown[] = [];
+  if (Array.isArray(record.authors)) {
+    sources.push(...record.authors);
+  }
+  if (Array.isArray(record.nonPresenterAuthors)) {
+    sources.push(...record.nonPresenterAuthors);
+  }
+  const seen = new Set<string>();
+  const contributors: Contributor[] = [];
+  for (const item of sources) {
+    const contributor = normalizeContributor(item);
+    if (!contributor) {
+      continue;
+    }
+    const key = `${contributor.name}|${contributor.role ?? ''}|${contributor.type ?? ''}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    contributors.push(contributor);
+  }
+  return contributors;
+}
+
+function normalizeContributor(item: unknown): Contributor | null {
+  if (typeof item === 'string') {
+    const name = item.trim();
+    return name ? { name } : null;
+  }
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+  const record = item as Record<string, unknown>;
+  const rawName =
+    (typeof record.name === 'string' && record.name) ||
+    (typeof record.name_alt === 'string' && record.name_alt) ||
+    (typeof record.author === 'string' && record.author) ||
+    (typeof record.title === 'string' && record.title) ||
+    '';
+  const name = rawName.trim();
+  if (!name) {
+    return null;
+  }
+  const role = typeof record.role === 'string' && record.role ? record.role : undefined;
+  const type = typeof record.type === 'string' && record.type ? record.type : undefined;
+  return { name, role, type };
+}
+
+function pruneEmptyFields(record: Record<string, unknown>): Record<string, unknown> {
+  const output: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        continue;
+      }
+      output[key] = value;
+      continue;
+    }
+    if (value && typeof value === 'object') {
+      if (Object.keys(value as Record<string, unknown>).length === 0) {
+        continue;
+      }
+      output[key] = value;
+      continue;
+    }
+    if (value === null || value === undefined) {
+      continue;
+    }
+    output[key] = value;
+  }
+  return output;
 }
 
 function collectResources(record: Record<string, unknown>): Resource[] {

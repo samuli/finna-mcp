@@ -39,12 +39,24 @@ const StructuredFilterSchema = z
   .passthrough();
 const FilterSchema = z.union([StructuredFilterSchema, z.record(z.unknown())]).optional();
 
+const SEARCH_SORT_OPTIONS = [
+  'relevance',
+  'newest',
+  'newest_first',
+  'latest',
+  'oldest',
+  'oldest_first',
+  'earliest',
+  'year_newest',
+  'year_oldest',
+] as const;
+
 const SearchRecordsArgs = z.object({
   lookfor: z.string().default(''),
   type: z.string().default('AllFields'),
   page: z.number().int().min(1).optional(),
   limit: z.number().int().min(0).max(100).optional(),
-  sort: z.string().optional(),
+  sort: z.enum(SEARCH_SORT_OPTIONS).optional(),
   lng: z.string().optional(),
   filters: FilterSchema,
   facets: z.array(z.string()).optional(),
@@ -79,7 +91,7 @@ const ListToolsResponse = {
     {
       name: 'search_records',
       description:
-        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead. lookfor uses Solr/Lucene-style query syntax over limited metadata fields; use lookfor="" or "*" when you only need counts by filters. To count records, set limit=0 and read resultCount. For books: use filters.include.format=["0/Book/"] (format codes) and a building filter from list_organizations. Sort options: "relevance,id asc" (default), "main_date_str desc" (year newest), "main_date_str asc" (year oldest), "last_indexed desc", "first_indexed desc", "callnumber,id asc", "author,id asc", "title,id asc".',
+        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead. lookfor uses Solr/Lucene-style query syntax over limited metadata fields; use lookfor="" or "*" when you only need counts by filters. To count records, set limit=0 and read resultCount. For books: use filters.include.format=["0/Book/"] (format codes) and a building filter from list_organizations. Sort options: "relevance" (default), "newest" (recently added to Finna), "oldest" (earliest added), "year_newest" (newest publication/creation year), "year_oldest" (oldest year).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -90,7 +102,7 @@ const ListToolsResponse = {
           sort: {
             type: 'string',
             description:
-              'Sort options: "relevance,id asc" (default), "main_date_str desc" (year newest), "main_date_str asc" (year oldest), "last_indexed desc", "first_indexed desc", "callnumber,id asc", "author,id asc", "title,id asc".',
+              'Sort options: "relevance" (default), "newest" (recently added to Finna), "oldest" (earliest added), "year_newest" (newest publication/creation year), "year_oldest" (oldest year).',
           },
           lng: { type: 'string' },
           filters: {
@@ -105,7 +117,12 @@ const ListToolsResponse = {
             description:
               'Raw facet filters in Finna syntax, e.g. ["building:\\"0/URHEILUMUSEO/\\"", "format:\\"0/Book/\\""]',
           },
-          fields: { type: 'array', items: { type: 'string' } },
+          fields: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Record fields to return. Defaults include: id, title, formats, languages, year, images, onlineUrls, urls, contributors. Add "buildings" explicitly if you need organization hierarchy. Use fields to request raw authors/nonPresenterAuthors.',
+          },
           sampleLimit: { type: 'number' },
         },
       },
@@ -118,7 +135,12 @@ const ListToolsResponse = {
         properties: {
           ids: { type: 'array', items: { type: 'string' } },
           lng: { type: 'string' },
-          fields: { type: 'array', items: { type: 'string' } },
+          fields: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Record fields to return. Defaults include: id, title, formats, buildings, subjects, genres, series, authors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, summary, measurements, contributors. Use fields to request raw nonPresenterAuthors.',
+          },
           includeRawData: { type: 'boolean' },
           sampleLimit: { type: 'number' },
         },
@@ -217,13 +239,11 @@ const DEFAULT_SEARCH_FIELDS = [
   'id',
   'title',
   'formats',
-  'buildings',
   'languages',
   'year',
   'images',
   'onlineUrls',
   'urls',
-  'nonPresenterAuthors',
 ];
 
 const DEFAULT_RECORD_FIELDS = [
@@ -281,10 +301,11 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   });
 
   const payload = await fetchJson(url);
-  const records = getRecords(payload);
-  const enriched = records.map((record) =>
-    enrichRecordResources(record, sampleLimit ?? 3),
-  );
+  const records = limit === 0 ? [] : getRecords(payload);
+  const enriched =
+    limit === 0
+      ? []
+      : records.map((record) => enrichRecordResources(record, sampleLimit ?? 3));
 
   return json({
     result: {
@@ -479,10 +500,19 @@ function normalizeSort(sort?: string): string | undefined {
     return sort;
   }
   const normalized = sort.trim().toLowerCase();
-  if (normalized === 'newest_first' || normalized === 'newest' || normalized === 'latest') {
+  if (normalized === 'relevance') {
+    return 'relevance,id asc';
+  }
+  if (normalized === 'newest' || normalized === 'newest_first' || normalized === 'latest') {
+    return 'first_indexed desc';
+  }
+  if (normalized === 'oldest' || normalized === 'oldest_first' || normalized === 'earliest') {
+    return 'first_indexed asc';
+  }
+  if (normalized === 'year_newest' || normalized === 'year newest') {
     return 'main_date_str desc';
   }
-  if (normalized === 'oldest_first' || normalized === 'oldest' || normalized === 'earliest') {
+  if (normalized === 'year_oldest' || normalized === 'year oldest') {
     return 'main_date_str asc';
   }
   return sort;
