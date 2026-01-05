@@ -71,7 +71,7 @@ const ListToolsResponse = {
     {
       name: 'search_records',
       description:
-        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead.',
+        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead. Sort options: "relevance,id asc" (default), "main_date_str desc" (year newest), "main_date_str asc" (year oldest), "last_indexed desc", "first_indexed desc", "callnumber,id asc", "author,id asc", "title,id asc".',
       inputSchema: {
         type: 'object',
         properties: {
@@ -79,7 +79,11 @@ const ListToolsResponse = {
           type: { type: 'string' },
           page: { type: 'number' },
           limit: { type: 'number' },
-          sort: { type: 'string' },
+          sort: {
+            type: 'string',
+            description:
+              'Sort options: "relevance,id asc" (default), "main_date_str desc" (year newest), "main_date_str asc" (year oldest), "last_indexed desc", "first_indexed desc", "callnumber,id asc", "author,id asc", "title,id asc".',
+          },
           lng: { type: 'string' },
           filters: { type: 'object' },
           facets: { type: 'array', items: { type: 'string' } },
