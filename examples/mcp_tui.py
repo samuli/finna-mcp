@@ -161,10 +161,15 @@ class FinnaTUI(App):
     #responses {
       height: 2fr;
     }
-    .panel-header {
+    #conversation-header, #responses-header {
       height: 3;
+      align: left middle;
     }
-    .panel-controls Button {
+    #conversation-label, #responses-label {
+      width: 1fr;
+    }
+    #conversation-header Button, #responses-header Button {
+      min-width: 8;
       margin-left: 1;
     }
     #model-label, #model-filter, #model-select {
@@ -202,16 +207,16 @@ class FinnaTUI(App):
         yield Vertical(
             Horizontal(
                 Static("Conversation", id="conversation-label"),
-                Button("Copy", id="conversation-copy", classes="panel-controls"),
-                Button("Clear", id="conversation-clear", classes="panel-controls"),
-                classes="panel-header",
+                Button("Copy", id="conversation-copy"),
+                Button("Clear", id="conversation-clear"),
+                id="conversation-header",
             ),
             RichLog(id="conversation", wrap=True, auto_scroll=True),
             Horizontal(
                 Static("MCP Responses", id="responses-label"),
-                Button("Copy", id="responses-copy", classes="panel-controls"),
-                Button("Clear", id="responses-clear", classes="panel-controls"),
-                classes="panel-header",
+                Button("Copy", id="responses-copy"),
+                Button("Clear", id="responses-clear"),
+                id="responses-header",
             ),
             RichLog(id="responses", wrap=False, auto_scroll=True),
         )
