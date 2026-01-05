@@ -550,16 +550,19 @@ function filterOrganizationsPayload(
 
   let result = entries.slice();
   if (lookfor) {
-    const query = lookfor.toLowerCase();
+    const query = lookfor.toLowerCase().trim();
+    const variants = buildLookforVariants(query);
     result = result.filter((entry) => {
       if (!entry || typeof entry !== 'object') {
         return false;
       }
       const value = String((entry as Record<string, unknown>).value ?? '');
       const translated = String((entry as Record<string, unknown>).translated ?? '');
-      return (
-        value.toLowerCase().includes(query) ||
-        translated.toLowerCase().includes(query)
+      const valueLower = value.toLowerCase();
+      const translatedLower = translated.toLowerCase();
+      return variants.some(
+        (variant) =>
+          valueLower.includes(variant) || translatedLower.includes(variant),
       );
     });
   }
@@ -586,6 +589,29 @@ function filterOrganizationsPayload(
       building: result,
     },
   };
+}
+
+function buildLookforVariants(query: string): string[] {
+  if (!query) {
+    return [];
+  }
+  const variants = new Set<string>();
+  variants.add(query);
+  const trimmed = query.replace(/\s+/g, ' ').trim();
+  variants.add(trimmed);
+  if (trimmed.length > 4) {
+    variants.add(trimmed.slice(0, -1));
+  }
+  if (trimmed.endsWith('i')) {
+    variants.add(`${trimmed}n`);
+    variants.add(`${trimmed.slice(0, -1)}en`);
+  }
+  const lastChar = trimmed.at(-1);
+  if (lastChar && 'aäoöuy'.includes(lastChar)) {
+    variants.add(`${trimmed}n`);
+  }
+  variants.delete('');
+  return Array.from(variants);
 }
 
 async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
