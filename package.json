@@ -8,6 +8,8 @@
     "deploy": "wrangler deploy src/index.ts",
     "test": "HOME=$PWD XDG_CONFIG_HOME=$PWD/.config WRANGLER_HOME=$PWD/.wrangler vitest run",
     "test:watch": "HOME=$PWD XDG_CONFIG_HOME=$PWD/.config WRANGLER_HOME=$PWD/.wrangler vitest",
+    "test:integration": "RUN_INTEGRATION=1 VITEST_POOL=threads vitest run tests/integration.test.ts",
+    "test:integration:watch": "RUN_INTEGRATION=1 VITEST_POOL=threads vitest tests/integration.test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "check": "npm run lint && npm run test"
