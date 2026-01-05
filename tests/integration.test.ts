@@ -129,4 +129,35 @@ suite('integration (local wrangler)', () => {
     },
     15000,
   );
+
+  it(
+    'list_organizations filters by lookfor',
+    async () => {
+      if (!available) {
+        return;
+      }
+      const lookfor = 'Seinäjoki';
+      const response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          method: 'callTool',
+          params: { name: 'list_organizations', arguments: { lookfor, lng: 'fi' } },
+        }),
+      });
+      expect(response.ok).toBe(true);
+      const payload = await response.json();
+      const entries = payload.result?.facets?.building;
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return;
+      }
+      const query = lookfor.toLowerCase();
+      for (const entry of entries) {
+        const value = String(entry?.value ?? '').toLowerCase();
+        const translated = String(entry?.translated ?? '').toLowerCase();
+        expect(value.includes(query) || translated.includes(query)).toBe(true);
+      }
+    },
+    15000,
+  );
 });
