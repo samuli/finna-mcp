@@ -54,12 +54,14 @@ const SEARCH_SORT_OPTIONS = [
 const SEARCH_MODE_OPTIONS = ['simple', 'advanced'] as const;
 const ADVANCED_OPERATOR_OPTIONS = ['AND', 'OR'] as const;
 
+const FIELD_PRESET_OPTIONS = ['compact', 'media', 'full'] as const;
+
 const SearchRecordsArgs = z.object({
   lookfor: z.string().default(''),
   type: z.string().default('AllFields'),
   search_mode: z.enum(SEARCH_MODE_OPTIONS).optional(),
   advanced_operator: z.enum(ADVANCED_OPERATOR_OPTIONS).optional(),
-  fields_preset: z.enum(['compact', 'media', 'full']).optional(),
+  fields_preset: z.enum(FIELD_PRESET_OPTIONS).optional(),
   page: z.number().int().min(1).optional(),
   limit: z.number().int().min(0).max(100).optional(),
   sort: z.enum(SEARCH_SORT_OPTIONS).optional(),
@@ -75,7 +77,7 @@ const GetRecordArgs = z.object({
   ids: z.array(z.string()).min(1),
   lng: z.string().optional(),
   fields: z.array(z.string()).optional(),
-  fields_preset: z.enum(['compact', 'media', 'full']).optional(),
+  fields_preset: z.enum(FIELD_PRESET_OPTIONS).optional(),
   includeRawData: z.boolean().optional(),
   sampleLimit: z.number().int().min(1).max(5).optional(),
 });
@@ -443,6 +445,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     search_mode,
     fields_preset,
     fields,
+    fieldsProvided: fields !== undefined,
     limit,
     resultCount: payload.resultCount,
     records: cleaned,
@@ -1321,6 +1324,7 @@ function buildSearchMeta(options: {
   search_mode?: string;
   fields_preset?: string;
   fields?: string[] | null;
+  fieldsProvided: boolean;
   limit?: number;
   resultCount?: number;
   records: Record<string, unknown>[];
@@ -1332,10 +1336,25 @@ function buildSearchMeta(options: {
     search_mode,
     fields_preset,
     fields,
+    fieldsProvided,
     limit,
     resultCount,
     records,
   } = options;
+  const selectedFields = fields ?? resolveSearchFieldsPreset(fields_preset);
+  const resourceFields = new Set(['images', 'urls', 'onlineUrls']);
+  const includesResourceFields =
+    (!fieldsProvided && selectedFields.some((field) => resourceFields.has(field)));
+  const hasResourceData = records.some((record) => {
+    const images = record.images;
+    const urls = record.urls;
+    const onlineUrls = record.onlineUrls;
+    return (
+      (Array.isArray(images) && images.length > 0) ||
+      (Array.isArray(urls) && urls.length > 0) ||
+      (Array.isArray(onlineUrls) && onlineUrls.length > 0)
+    );
+  });
 
   if (search_mode !== 'advanced' && looksMultiTerm(lookfor)) {
     warnings.push(
@@ -1358,17 +1377,7 @@ function buildSearchMeta(options: {
       'Large result set. Consider narrowing with filters.include.building or filters.include.format.',
     );
   }
-  const hasResources = records.some((record) => {
-    const images = record.images;
-    const urls = record.urls;
-    const onlineUrls = record.onlineUrls;
-    return (
-      (Array.isArray(images) && images.length > 0) ||
-      (Array.isArray(urls) && urls.length > 0) ||
-      (Array.isArray(onlineUrls) && onlineUrls.length > 0)
-    );
-  });
-  if (records.length > 0 && !hasResources) {
+  if (includesResourceFields && records.length > 0 && !hasResourceData) {
     info.push(
       'No online resources found in these records; try fields_preset="full" or includeRawData for more source-specific links.',
     );

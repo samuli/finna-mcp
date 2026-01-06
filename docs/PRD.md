@@ -197,6 +197,7 @@ Use these in `filters.include.format` when narrowing by type:
 - Multi-term queries now include `meta.warning` for advanced mode.
 - Large result sets include `meta.info` suggesting building/format filters.
 - `fields` + `fields_preset` includes override notice.
+- Resource guidance (`No online resources found…`) appears only when resource fields are included in the selected field set.
 
 ## Feature: Compact Organization Listing (2026-01-06)
 ### Change
