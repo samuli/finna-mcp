@@ -249,7 +249,7 @@ Use these in `filters.include.format` when narrowing by type:
 Goal: reduce Finna field knowledge required by LLMs while keeping raw `filters` available.
 
 ### Recommended helpers (mapped to Finna fields)
-- `available_online: boolean` → `filters.include.free_online_boolean=["1"]` (matches UI “Available online”)
+- `available_online: boolean` → `filters.include.online_boolean=["1"]`
 - `usage_rights: string[]` → `filters.include.usage_rights_str_mv=[...]`
   - Finna usage rights codes (facet field) include:
     - `usage_A` = Free use

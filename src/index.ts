@@ -743,7 +743,7 @@ function mergeTopLevelFilters(
   merged.include = merged.include ? { ...merged.include } : {};
 
   if (options.available_online) {
-    addFilterValues(merged.include, 'free_online_boolean', ['1']);
+    addFilterValues(merged.include, 'online_boolean', ['1']);
   }
   if (options.usage_rights) {
     addFilterValues(

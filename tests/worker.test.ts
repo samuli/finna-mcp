@@ -315,7 +315,7 @@ describe('worker', () => {
     const response = await worker.fetch(request, baseEnv);
     expect(response.status).toBe(200);
     const calledUrl = String(mockFetch.mock.calls[0][0]);
-    expect(calledUrl).toContain('filter%5B%5D=free_online_boolean%3A%221%22');
+    expect(calledUrl).toContain('filter%5B%5D=online_boolean%3A%221%22');
     expect(calledUrl).toContain('filter%5B%5D=usage_rights_str_mv%3A%22usage_A%22');
     expect(calledUrl).toContain('filter%5B%5D=format%3A%220%2FBook%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=building%3A%220%2FHelmet%2F%22');
