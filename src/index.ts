@@ -156,13 +156,13 @@ const ListToolsResponse = {
           available_online: {
             type: 'boolean',
             description:
-              'Available online (free access). Maps to Finna free_online_boolean.',
+              'Available online. Maps to Finna online_boolean.',
           },
           usage_rights: {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Usage rights codes (e.g., ["usage_A", "usage_E"]). Maps to usage_rights_str_mv.',
+              'Usage rights codes (usage_A..usage_F). usage_A=Free use, usage_B=Derivatives+commercial, usage_C=No derivatives+commercial, usage_D=Derivatives+non-commercial, usage_E=No derivatives+non-commercial, usage_F=Permission required/unknown.',
           },
           content_type: {
             type: ['string', 'array'],
