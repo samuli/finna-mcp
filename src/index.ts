@@ -1086,6 +1086,11 @@ Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
 {"available_online": true, "content_type": "0/Video/", "limit": 10}
 \`\`\`
 
+11) New in Finna (recently added)
+\`\`\`json
+{"filters": {"include": {"new_finna_boolean": ["1"]}}, "sort": "newest", "limit": 10}
+\`\`\`
+
 ## More information
 - Finna overview: \`https://finna.fi/Content/about_finnafi\`
 - About Finna: \`https://finna.fi/Content/about\`
