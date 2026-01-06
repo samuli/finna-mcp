@@ -169,7 +169,7 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Organization IDs (Use list_organizations to discover IDs. Does not support labels/organization names).'
+              'Organization IDs (Use list_organizations to discover IDs. Labels/names may be resolved to IDs, but ambiguous matches will warn).'
           },
           language: {
             type: ['string', 'array'],
@@ -186,7 +186,7 @@ const ListToolsResponse = {
           filters: {
             type: 'object',
             description:
-              'Structured filters: {include:{field:[values]}, any:{field:[values]}, exclude:{field:[values]}}. For organizations, use list_organizations value strings in include.organization. Example for books: include.format=["0/Book/"]. Use exclude.format=[...] to drop formats. Note that filter values are case sensitive need to match exactly to those used by Finna.',
+              'Structured filters: {include:{field:[values]}, any:{field:[values]}, exclude:{field:[values]}}. For organizations, use list_organizations value strings in include.organization (labels may be resolved but should not be relied on). Example for books: include.format=["0/Book/"]. Use exclude.format=[...] to drop formats. Note that filter values are case sensitive need to match exactly to those used by Finna.',
           },
           facets: {
             type: 'array',
@@ -1400,7 +1400,7 @@ Organizations have hierarchical codes:
 ## Troubleshooting
 
 **No results with organization filter?**
-→ Ensure you're using the VALUE code (0/HKM/) not the label
+→ Prefer the VALUE code (0/HKM/). Labels may be resolved, but ambiguous matches will warn.
 
 **Multi-term query warning?**
 → Try search_mode="advanced" with advanced_operator="AND"
