@@ -148,6 +148,27 @@ Use these in `filters.include.format` when narrowing by type:
 - Add a holdings/availability tool (Finna holdings/JSON or per-org endpoints).
 - Provide an optional “compact” org list mode with top-level only + search hint.
 
+## LLM UX Improvement Ideas (shortlist)
+- Add `fields_preset` for `search_records` so the model can request compact/media/full record shapes without memorizing field names.
+- Add `include_paths` for `list_organizations` to provide explicit org paths (e.g., “Satakirjastot / Rauma / Rauman pääkirjasto”).
+- Add a `search_mode` hint in tool docs so multi-term queries use advanced mode.
+
+## LLM UX Improvements Implemented (2026-01-06)
+### Features
+- `fields_preset` added to `search_records` with presets:
+  - `compact`: `id`, `title`, `recordUrl`, `urls`, `onlineUrls`
+  - `media`: `id`, `title`, `recordUrl`, `images`, `urls`, `onlineUrls`, `formats`, `languages`, `year`
+  - `full`: adds richer metadata (subjects, genres, series, authors, publishers, summary, measurements)
+- `include_paths` added to `list_organizations` to include a `path` label for each node.
+
+### Re-evaluation (2026-01-06)
+- `search_records(fields_preset="compact")` returns a minimal set (observed: `id`, `title`, `recordUrl`). Result counts match API.
+- `search_records(fields_preset="media")` returns metadata needed for content/media discovery (observed: `formats`, `languages`, `year`, plus `id`, `title`, `recordUrl`).
+- `list_organizations(include_paths=true)` adds path strings like:
+  - `Satakirjastot / Rauma`
+  - `Satakunnan ammattikorkeakoulu / Rauma`
+  - `Turun yliopisto / Rauman normaalikoulun kirjasto, vain Rauman oppilaille`
+
 ## Users
 - TODO
 

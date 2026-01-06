@@ -59,6 +59,7 @@ const SearchRecordsArgs = z.object({
   type: z.string().default('AllFields'),
   search_mode: z.enum(SEARCH_MODE_OPTIONS).optional(),
   advanced_operator: z.enum(ADVANCED_OPERATOR_OPTIONS).optional(),
+  fields_preset: z.enum(['compact', 'media', 'full']).optional(),
   page: z.number().int().min(1).optional(),
   limit: z.number().int().min(0).max(100).optional(),
   sort: z.enum(SEARCH_SORT_OPTIONS).optional(),
@@ -84,6 +85,7 @@ const ListOrganizationsArgs = z.object({
   lng: z.string().optional(),
   filters: FilterSchema,
   max_depth: z.number().int().min(1).max(6).optional(),
+  include_paths: z.boolean().optional(),
 });
 
 const ExtractResourcesArgs = z.object({
@@ -110,6 +112,11 @@ const ListToolsResponse = {
           advanced_operator: {
             type: 'string',
             description: 'Operator for advanced mode: "AND" (default) or "OR".',
+          },
+          fields_preset: {
+            type: 'string',
+            description:
+              'Field preset: "compact" (ids + title + urls), "media" (adds images/onlineUrls), "full" (adds richer metadata). Overrides default fields unless fields is set.',
           },
           page: { type: 'number' },
           limit: { type: 'number' },
@@ -176,6 +183,11 @@ const ListToolsResponse = {
             type: 'number',
             description:
               'Optional max depth for returned hierarchy (1-6). Overrides default pruning behavior when set.',
+          },
+          include_paths: {
+            type: 'boolean',
+            description:
+              'If true, include a path label for each item (e.g., "Satakirjastot / Rauma / Rauman pääkirjasto").',
           },
         },
       },
@@ -283,6 +295,37 @@ const DEFAULT_RECORD_FIELDS = [
   'measurements',
 ];
 
+function resolveSearchFieldsPreset(preset?: string): string[] {
+  if (!preset) {
+    return [...DEFAULT_SEARCH_FIELDS];
+  }
+  const selected = SEARCH_FIELD_PRESETS[preset];
+  return selected ? [...selected] : [...DEFAULT_SEARCH_FIELDS];
+}
+
+const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
+  compact: ['id', 'title', 'recordUrl', 'urls', 'onlineUrls'],
+  media: ['id', 'title', 'recordUrl', 'images', 'urls', 'onlineUrls', 'formats', 'languages', 'year'],
+  full: [
+    'id',
+    'title',
+    'recordUrl',
+    'formats',
+    'languages',
+    'year',
+    'images',
+    'onlineUrls',
+    'urls',
+    'subjects',
+    'genres',
+    'series',
+    'authors',
+    'publishers',
+    'summary',
+    'measurements',
+  ],
+};
+
 async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   const parsed = SearchRecordsArgs.safeParse(args ?? {});
   if (!parsed.success) {
@@ -293,6 +336,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     type,
     search_mode,
     advanced_operator,
+    fields_preset,
     page,
     limit,
     sort,
@@ -305,6 +349,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   } = parsed.data;
   const normalizedFilters = normalizeFilters(filters);
   const normalizedSort = normalizeSort(sort);
+  const selectedFields = fields ?? resolveSearchFieldsPreset(fields_preset);
 
   const url = buildSearchUrl({
     apiBase: env.FINNA_API_BASE,
@@ -319,7 +364,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     filters: normalizedFilters,
     facets,
     facetFilters,
-    fields: fields ?? DEFAULT_SEARCH_FIELDS,
+    fields: selectedFields,
   });
 
   const payload = await fetchJson(url);
@@ -334,7 +379,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
           ),
         );
   const cleaned =
-    fields && !fields.includes('recordUrl')
+    selectedFields && !selectedFields.includes('recordUrl')
       ? enriched.map((record) => stripRecordUrl(record))
       : enriched;
 
@@ -390,7 +435,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const { lookfor, type, lng, filters, max_depth } = parsed.data;
+  const { lookfor, type, lng, filters, max_depth, include_paths } = parsed.data;
   const normalizedFilters = normalizeFilters(filters);
   const cacheLng = lng ?? 'fi';
   const cacheKey = buildOrganizationsCacheKey(cacheLng, type);
@@ -402,16 +447,19 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
     if (!lookfor && !normalizedFilters) {
       const depth = max_depth ?? 2;
       return json({
-        result: pruneOrganizationsDepth(
-          cached,
-          depth,
-          max_depth ? 'max_depth' : 'unfiltered',
+        result: finalizeOrganizations(
+          pruneOrganizationsDepth(
+            cached,
+            depth,
+            max_depth ? 'max_depth' : 'unfiltered',
+          ),
+          include_paths,
         ),
       });
     }
     const filtered = filterOrganizationsPayload(cached, lookfor, normalizedFilters);
     if (filtered) {
-      return json({ result: filtered });
+      return json({ result: finalizeOrganizations(filtered, include_paths) });
     }
   }
   const uiPayload = await fetchUiOrganizations(cacheLng, type, env.FINNA_UI_BASE);
@@ -425,7 +473,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   } else if (!lookfor && !normalizedFilters) {
     result = pruneOrganizationsDepth(result, 2, 'unfiltered');
   }
-  return json({ result });
+  return json({ result: finalizeOrganizations(result, include_paths) });
 }
 
 async function fetchUiOrganizations(
@@ -704,6 +752,51 @@ function pruneOrganizationsDepth(
       reason,
     },
   };
+}
+
+function finalizeOrganizations(
+  payload: Record<string, unknown>,
+  includePaths?: boolean,
+): Record<string, unknown> {
+  if (!includePaths) {
+    return payload;
+  }
+  const facets = payload.facets as Record<string, unknown> | undefined;
+  const entries = facets?.building;
+  if (!Array.isArray(entries)) {
+    return payload;
+  }
+  const enhanced = addFacetPaths(entries, []);
+  return {
+    ...payload,
+    facets: {
+      ...facets,
+      building: enhanced,
+    },
+  };
+}
+
+function addFacetPaths(entries: unknown[], ancestors: string[]): unknown[] {
+  return entries.map((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return entry;
+    }
+    const record = entry as Record<string, unknown>;
+    const label =
+      (typeof record.label === 'string' && record.label) ||
+      (typeof record.translated === 'string' && record.translated) ||
+      '';
+    const pathParts = label ? [...ancestors, label] : [...ancestors];
+    const children = record.children;
+    const enhanced: Record<string, unknown> = { ...record };
+    if (pathParts.length > 0) {
+      enhanced.path = pathParts.join(' / ');
+    }
+    if (Array.isArray(children) && children.length > 0) {
+      enhanced.children = addFacetPaths(children, pathParts);
+    }
+    return enhanced;
+  });
 }
 
 function pruneFacetEntriesDepth(

@@ -346,4 +346,72 @@ describe('worker', () => {
     expect(hasLabel(tree, 'Eepos-kirjastot')).toBe(true);
     expect(hasLabel(tree, 'Seinäjoki')).toBe(true);
   });
+
+  it('list_organizations can include path labels', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    const fixture = JSON.stringify({
+      data: {
+        facets: {
+          building: {
+            html: `
+              <ul class="facet-tree">
+                <li class="facet-tree__parent">
+                  <span class="facet-tree__item-container">
+                    <span class="facet js-facet-item facetOR">
+                      <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%220%2FEepos%2F%22" data-title="Eepos-kirjastot" data-count="360571">
+                        <span class="facet-value icon-link__label">Eepos-kirjastot</span>
+                      </a>
+                    </span>
+                  </span>
+                  <ul>
+                    <li class="facet-tree__parent">
+                      <span class="facet-tree__item-container">
+                        <span class="facet js-facet-item facetOR">
+                          <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%221%2FEepos%2F19%2F%22" data-title="Seinäjoki" data-count="2947">
+                            <span class="facet-value icon-link__label">Seinäjoki</span>
+                          </a>
+                        </span>
+                      </span>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            `,
+          },
+        },
+      },
+    });
+    mockFetch.mockResolvedValueOnce(
+      new Response(fixture, { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: {
+          name: 'list_organizations',
+          arguments: { lookfor: 'Seinäjoki', include_paths: true },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    const payload = await response.json();
+    const tree = payload.result.facets?.building ?? [];
+    const hasPath = (nodes: any[]): boolean => {
+      for (const node of nodes) {
+        if (typeof node?.path === 'string' && node.path.includes('Eepos-kirjastot')) {
+          return true;
+        }
+        if (Array.isArray(node.children) && hasPath(node.children)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    expect(hasPath(tree)).toBe(true);
+  });
+
 });
