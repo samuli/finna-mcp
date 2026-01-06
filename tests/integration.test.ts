@@ -316,7 +316,7 @@ suite('integration (local wrangler)', () => {
               limit: 0,
               lng: 'fi',
               filters: {
-                include: { format: ['0/Image/'], organization: ['Helsingin kaupunginmuseo'] },
+                include: { format: ['0/Book/'], organization: ['Helmet-kirjastot'] },
               },
             },
           },
