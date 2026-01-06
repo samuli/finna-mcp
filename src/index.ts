@@ -144,7 +144,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Record fields to return. Defaults include: id, title, formats, languages, year, images, onlineUrls, urls, recordUrl, contributors. Add "buildings" explicitly if you need organization hierarchy. Use fields to request raw authors/nonPresenterAuthors.',
+              'Record fields to return. Defaults include: id, title, formats, authors, buildings, languages, year, images, onlineUrls, urls, recordUrl, contributors. Use fields to request raw authors/nonPresenterAuthors.',
           },
           sampleLimit: { type: 'number' },
         },
@@ -279,6 +279,8 @@ const DEFAULT_SEARCH_FIELDS = [
   'id',
   'title',
   'formats',
+  'authors',
+  'buildings',
   'languages',
   'year',
   'images',
