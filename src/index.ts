@@ -123,7 +123,7 @@ const ListToolsResponse = {
     {
       name: 'search_records',
       description:
-      'Search and retrieve metadata over records in Finna. Do not use for libraries/organizations; use list_organizations instead.',
+      'Search and retrieve metadata over records in Finna.fi. Do not use for libraries/organizations; use list_organizations instead. Use "help" tool to get more information and usage examples.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -157,7 +157,7 @@ const ListToolsResponse = {
           available_online: {
             type: 'boolean',
             description:
-              'Available online. Maps to Finna online_boolean.',
+            'Return only material that is available online',
           },
           usage_rights: {
             type: ['string', 'array'],
@@ -169,7 +169,7 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Content types (format IDs). Maps to format. Example: "0/Book/".',
+              'Content types (format IDs). Maps to format. Examples: "0/Book/", "1/Book/eBook/", "0/Image/"',
           },
           organization: {
             type: ['string', 'array'],
@@ -999,21 +999,21 @@ function collectFacetValues(entries: unknown, acc: string[] = []): string[] {
 function buildHelpPayload(): Record<string, unknown> {
   const markdown = `# Finna MCP Help
 
-## What this server is
-Finna is a unified search across Finnish libraries, archives, and museums. It includes online items as well as material that may require on-site access.
+## MCP server for Finna Finna.fi's cultural and scientific material in Finland.
+Finna.fi is a unified search across Finnish libraries, archives, and museums. It includes online items as well as material that may require on-site access.
 
-**Important:** This MCP server is not an official Finna service.
+Note that this MCP servier is not an official Finna service.
 More info: \`https://github.com/samuli/finna-mcp\`
 
 ## Filter helpers (recommended)
-- \`available_online\` → \`online_boolean\` (only items available online)
+- \`available_online\` → (only items available online)
 - \`usage_rights\` → \`usage_rights_str_mv\` (online materials only)
 - \`content_type\` → \`format\`
 - \`organization\` → \`building\`
 - \`language\` → \`language\`
 - \`year\` → \`main_date_str\` (supports ranges like \`1920-1980\`)
 
-### Usage rights codes
+### Usage rights filter codes
 - \`usage_A\` = Free use
 - \`usage_B\` = Derivatives, also commercial
 - \`usage_C\` = No derivatives, also commercial
@@ -1064,6 +1064,26 @@ Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
 6) Finnish + Swedish materials
 \`\`\`json
 {"language": ["fin", "swe"], "limit": 10}
+\`\`\`
+
+7) Restrict to a specific library consortium (Satakirjastot)
+\`\`\`json
+{"organization": ["0/SATAKIRJASTOT/"], "content_type": "0/Book/", "limit": 10}
+\`\`\`
+
+8) Restrict to a museum organization (Helsinki City Museum)
+\`\`\`json
+{"organization": ["0/HKM/"], "content_type": "0/Image/", "available_online": true, "limit": 10}
+\`\`\`
+
+9) Old photos of Helsinki (online + photos + year range)
+\`\`\`json
+{"available_online": true, "content_type": "0/Image/", "lookfor": "Helsinki", "year": "1900-1950", "limit": 10}
+\`\`\`
+
+10) Online videos (any topic)
+\`\`\`json
+{"available_online": true, "content_type": "0/Video/", "limit": 10}
 \`\`\`
 
 ## More information
