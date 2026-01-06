@@ -210,7 +210,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, formats, authors, buildings, languages, year, images, onlineUrls, urls, recordUrl, contributors. Use fields for uncommon items like nonPresenterAuthors.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, formats, authors, organizations, languages, year, images, onlineUrls, urls, recordUrl, contributors. Use fields for uncommon items like nonPresenterAuthors.',
           },
           sampleLimit: {
             type: 'number',
@@ -237,7 +237,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, formats, buildings, subjects, genres, series, authors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements, contributors.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, formats, organizations, subjects, genres, series, authors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements, contributors.',
           },
           includeRawData: {
             type: 'boolean',
@@ -392,7 +392,7 @@ const DEFAULT_SEARCH_FIELDS = [
   'title',
   'formats',
   'authors',
-  'buildings',
+  'organizations',
   'languages',
   'year',
   'images',
@@ -405,7 +405,7 @@ const DEFAULT_RECORD_FIELDS = [
   'id',
   'title',
   'formats',
-  'buildings',
+  'organizations',
   'subjects',
   'genres',
   'series',
@@ -435,6 +435,42 @@ function resolveGetRecordFieldsPreset(preset?: string): string[] {
   }
   const selected = GET_RECORD_FIELD_PRESETS[preset];
   return selected ? [...selected] : [...DEFAULT_RECORD_FIELDS];
+}
+
+function normalizeRequestedFields(fields: string[]): { apiFields: string[]; outputFields: string[] } {
+  const apiFields: string[] = [];
+  const outputFields: string[] = [];
+  for (const field of fields) {
+    if (field === 'organizations' || field === 'buildings') {
+      apiFields.push('buildings');
+      outputFields.push('organizations');
+      continue;
+    }
+    apiFields.push(field);
+    outputFields.push(field);
+  }
+  return {
+    apiFields: Array.from(new Set(apiFields)),
+    outputFields: Array.from(new Set(outputFields)),
+  };
+}
+
+function normalizeRecordOrganizations(record: Record<string, unknown>): Record<string, unknown> {
+  if (!record || typeof record !== 'object') {
+    return record;
+  }
+  const organizations =
+    (record as { organizations?: unknown }).organizations ??
+    (record as { buildings?: unknown }).buildings;
+  if (!organizations) {
+    return record;
+  }
+  const { buildings, ...rest } = record as Record<string, unknown>;
+  void buildings;
+  return {
+    ...rest,
+    organizations,
+  };
 }
 
 const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
@@ -483,7 +519,7 @@ const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
     'images',
     'onlineUrls',
     'urls',
-    'buildings',
+    'organizations',
     'subjects',
     'genres',
     'series',
@@ -539,6 +575,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   normalizedFilters = normalizedBuilding.filters;
   const normalizedSort = normalizeSort(sort);
   const selectedFields = fields ?? resolveSearchFieldsPreset(fields_preset);
+  const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
 
   const url = buildSearchUrl({
     apiBase: env.FINNA_API_BASE,
@@ -553,7 +590,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     filters: normalizedFilters,
     facets,
     facetFilters,
-    fields: selectedFields,
+    fields: apiFields,
   });
 
   const payload = await fetchJson(url);
@@ -562,20 +599,22 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     limit === 0
       ? []
       : records.map((record) =>
-          addRecordPageUrl(
-            enrichRecordResources(record, sampleLimit ?? 3),
-            env.FINNA_UI_BASE,
+          normalizeRecordOrganizations(
+            addRecordPageUrl(
+              enrichRecordResources(record, sampleLimit ?? 3),
+              env.FINNA_UI_BASE,
+            ),
           ),
         );
   const cleaned =
-    selectedFields && !selectedFields.includes('recordUrl')
+    outputFields && !outputFields.includes('recordUrl')
       ? enriched.map((record) => stripRecordUrl(record))
       : enriched;
   const meta = buildSearchMeta({
     query,
     search_mode,
     fields_preset,
-    fields,
+    fields: outputFields,
     fieldsProvided: fields !== undefined,
     limit,
     resultCount: payload.resultCount,
@@ -600,27 +639,31 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   }
   const { ids, lng, fields, fields_preset, includeRawData, sampleLimit } = parsed.data;
   const selectedFields = fields ? [...fields] : resolveGetRecordFieldsPreset(fields_preset);
+  const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
   if (includeRawData) {
-    selectedFields.push('rawData');
+    apiFields.push('rawData');
+    outputFields.push('rawData');
   }
 
   const url = buildRecordUrl({
     apiBase: env.FINNA_API_BASE,
     ids,
     lng,
-    fields: selectedFields,
+    fields: apiFields,
   });
 
   const payload = await fetchJson(url);
   const records = getRecords(payload);
   const enriched = records.map((record) =>
-    addRecordPageUrl(
-      enrichRecordResources(record, sampleLimit ?? 5),
-      env.FINNA_UI_BASE,
+    normalizeRecordOrganizations(
+      addRecordPageUrl(
+        enrichRecordResources(record, sampleLimit ?? 5),
+        env.FINNA_UI_BASE,
+      ),
     ),
   );
   const cleaned =
-    selectedFields && !selectedFields.includes('recordUrl')
+    outputFields && !outputFields.includes('recordUrl')
       ? enriched.map((record) => stripRecordUrl(record))
       : enriched;
 
@@ -1861,7 +1904,7 @@ function buildSearchMeta(options: {
   }
   if (typeof resultCount === 'number' && limit && resultCount > limit * 100) {
     info.push(
-      'Large result set. Consider narrowing with filters.include.building or filters.include.format.',
+      'Large result set. Consider narrowing with filters.include.organization or filters.include.format.',
     );
   }
   if (includesResourceFields && records.length > 0 && !hasResourceData) {
