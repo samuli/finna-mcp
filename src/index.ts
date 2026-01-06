@@ -660,6 +660,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     limit,
     resultCount: payload.resultCount,
     records: cleaned,
+    requestedOnline: available_online === true || hasOnlineFilter(normalizedFilters),
     extraInfo: normalizedBuilding.info,
     extraWarning: buildingWarnings.concat(normalizedBuilding.warnings),
   });
@@ -2037,13 +2038,42 @@ function stripRecordUrl(record: Record<string, unknown>): Record<string, unknown
   return rest;
 }
 
+function stripQuotedTerms(query: string): string {
+  return query.replace(/"[^"]+"/g, '').trim();
+}
+
 function looksMultiTerm(query: string): boolean {
   const trimmed = query.trim();
   if (!trimmed) {
     return false;
   }
-  const unquoted = trimmed.replace(/"[^"]+"/g, '').trim();
+  const unquoted = stripQuotedTerms(trimmed);
   return /\s/.test(unquoted);
+}
+
+function countQueryTerms(query: string): number {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return 0;
+  }
+  const unquoted = stripQuotedTerms(trimmed);
+  if (!unquoted) {
+    return 0;
+  }
+  return unquoted.split(/\s+/).filter(Boolean).length;
+}
+
+function hasOnlineFilter(filters?: FilterInput): boolean {
+  if (!filters) return false;
+  const buckets = [filters.include, filters.any];
+  for (const bucket of buckets) {
+    if (!bucket) continue;
+    const values = bucket.online_boolean;
+    if (Array.isArray(values) && values.some((value) => value === '1')) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function buildSearchMeta(options: {
@@ -2055,6 +2085,7 @@ function buildSearchMeta(options: {
   limit?: number;
   resultCount?: number;
   records: Record<string, unknown>[];
+  requestedOnline?: boolean;
   extraInfo?: string;
   extraWarning?: string[];
 }): Record<string, unknown> | null {
@@ -2085,9 +2116,15 @@ function buildSearchMeta(options: {
     );
   });
 
-  if (search_mode !== 'advanced' && looksMultiTerm(query)) {
-    warnings.push(
-      'Multi-term query detected; consider search_mode="advanced" with advanced_operator="AND" for better precision.',
+  const termCount = countQueryTerms(query);
+  if (
+    search_mode !== 'advanced' &&
+    termCount >= 4 &&
+    typeof resultCount === 'number' &&
+    resultCount <= 5
+  ) {
+    info.push(
+      'Multi-term query with few results; consider search_mode="advanced" with advanced_operator="AND" for more control.',
     );
   }
   if (search_mode === 'advanced' && !looksMultiTerm(query)) {
@@ -2106,7 +2143,7 @@ function buildSearchMeta(options: {
       'Large result set. Consider narrowing with filters.include.organization or filters.include.format.',
     );
   }
-  if (includesResourceFields && records.length > 0 && !hasResourceData) {
+  if (options.requestedOnline && includesResourceFields && records.length > 0 && !hasResourceData) {
     info.push(
       'No online resources found in these records; try fields_preset="full" or includeRawData for more source-specific links.',
     );
