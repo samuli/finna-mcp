@@ -301,7 +301,7 @@ Use these as examples and discover more via `facet[]=format`.
 - 0/MusicalScore/ — Musical scores
 
 ### Tooling suggestion
-- Add a `help` tool that returns the above guide (overview + helpers + common formats + short usage examples) so clients can fetch it explicitly.
+- Add a `help` tool that returns a markdown guide (overview + helpers + common formats + usage examples + links) so clients can fetch it explicitly.
 ## Users
 - TODO
 

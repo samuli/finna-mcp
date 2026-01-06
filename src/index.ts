@@ -997,93 +997,83 @@ function collectFacetValues(entries: unknown, acc: string[] = []): string[] {
 }
 
 function buildHelpPayload(): Record<string, unknown> {
-  return {
-    overview: {
-      summary:
-        'Finna is a unified search across Finnish libraries, archives, and museums. It includes online items as well as material that may require on-site access.',
-    },
-    filterHelpers: [
-      {
-        name: 'available_online',
-        mapsTo: 'online_boolean',
-        description: 'Only items available online.',
-      },
-      {
-        name: 'usage_rights',
-        mapsTo: 'usage_rights_str_mv',
-        description: 'Usage rights codes for online material.',
-        values: [
-          { code: 'usage_A', label: 'Free use' },
-          { code: 'usage_B', label: 'Derivatives, also commercial' },
-          { code: 'usage_C', label: 'No derivatives, also commercial' },
-          { code: 'usage_D', label: 'Derivatives, non-commercial' },
-          { code: 'usage_E', label: 'No derivatives, non-commercial' },
-          { code: 'usage_F', label: 'Permission required / unknown' },
-        ],
-      },
-      { name: 'content_type', mapsTo: 'format', description: 'Record format IDs.' },
-      { name: 'organization', mapsTo: 'building', description: 'Organization IDs.' },
-      { name: 'language', mapsTo: 'language', description: 'ISO 639-3 codes.' },
-      {
-        name: 'year',
-        mapsTo: 'main_date_str',
-        description: 'Publication/creation year or range (e.g., "1920-1980").',
-      },
-    ],
-    formats: [
-      { value: '0/Book/', description: 'Books (all)' },
-      { value: '0/Book/eBook/', description: 'E-books' },
-      { value: '0/Book/BookSection/', description: 'Book sections / chapters' },
-      { value: '0/Sound/', description: 'Sound recordings / audiobooks' },
-      { value: '0/Video/', description: 'Video / film' },
-      { value: '0/Image/', description: 'Images / photographs' },
-      { value: '0/Map/', description: 'Maps' },
-      { value: '0/Article/', description: 'Articles' },
-      { value: '0/Journal/', description: 'Journals / periodicals' },
-      { value: '0/PhysicalObject/', description: 'Physical objects' },
-      { value: '0/MusicalScore/', description: 'Musical scores' },
-    ],
-    usageExamples: [
-      {
-        title: 'Online images from a specific organization',
-        call: {
-          tool: 'search_records',
-          arguments: {
-            available_online: true,
-            content_type: '0/Image/',
-            organization: ['0/Helmet/'],
-            limit: 10,
-          },
-        },
-      },
-      {
-        title: 'Books published in 2020-2025',
-        call: {
-          tool: 'search_records',
-          arguments: { content_type: '0/Book/', year: '2020-2025', limit: 10 },
-        },
-      },
-      {
-        title: 'Filter by usage rights (free use)',
-        call: {
-          tool: 'search_records',
-          arguments: { available_online: true, usage_rights: ['usage_A'], limit: 10 },
-        },
-      },
-      {
-        title: 'Discover organization IDs',
-        call: {
-          tool: 'list_organizations',
-          arguments: { lookfor: 'Helsinki', include_paths: true },
-        },
-      },
-    ],
-    notes: [
-      'Use list_organizations to get organization IDs for filtering.',
-      'Use facets to discover valid values for other filters.',
-      'Hierarchical facets (format, building, sector_str_mv, category_str_mv) use slash-separated IDs.',
-    ],
-  };
+  const markdown = `# Finna MCP Help
+
+## What this server is
+Finna is a unified search across Finnish libraries, archives, and museums. It includes online items as well as material that may require on-site access.
+
+**Important:** This MCP server is not an official Finna service.
+More info: \`https://github.com/samuli/finna-mcp\`
+
+## Filter helpers (recommended)
+- \`available_online\` → \`online_boolean\` (only items available online)
+- \`usage_rights\` → \`usage_rights_str_mv\` (online materials only)
+- \`content_type\` → \`format\`
+- \`organization\` → \`building\`
+- \`language\` → \`language\`
+- \`year\` → \`main_date_str\` (supports ranges like \`1920-1980\`)
+
+### Usage rights codes
+- \`usage_A\` = Free use
+- \`usage_B\` = Derivatives, also commercial
+- \`usage_C\` = No derivatives, also commercial
+- \`usage_D\` = Derivatives, non-commercial
+- \`usage_E\` = No derivatives, non-commercial
+- \`usage_F\` = Permission required / unknown
+
+## Common record formats (examples)
+Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
+- \`0/Book/\` — Books (all)
+- \`0/Book/eBook/\` — E-books
+- \`0/Book/BookSection/\` — Book sections / chapters
+- \`0/Sound/\` — Sound recordings / audiobooks
+- \`0/Video/\` — Video / film
+- \`0/Image/\` — Images / photographs
+- \`0/Map/\` — Maps
+- \`0/Article/\` — Articles
+- \`0/Journal/\` — Journals / periodicals
+- \`0/PhysicalObject/\` — Physical objects
+- \`0/MusicalScore/\` — Musical scores
+
+## Usage examples
+1) Online images from an organization
+\`\`\`json
+{"available_online": true, "content_type": "0/Image/", "organization": ["0/Helmet/"], "limit": 10}
+\`\`\`
+
+2) Books published in 2020–2025
+\`\`\`json
+{"content_type": "0/Book/", "year": "2020-2025", "limit": 10}
+\`\`\`
+
+3) Free-use online material
+\`\`\`json
+{"available_online": true, "usage_rights": ["usage_A"], "limit": 10}
+\`\`\`
+
+4) Recent additions from a library system
+\`\`\`json
+{"organization": ["0/Helmet/"], "sort": "newest", "limit": 10}
+\`\`\`
+
+5) Discover organization IDs
+\`\`\`json
+{"lookfor": "Helsinki", "include_paths": true}
+\`\`\`
+
+6) Finnish + Swedish materials
+\`\`\`json
+{"language": ["fin", "swe"], "limit": 10}
+\`\`\`
+
+## More information
+- Finna overview: \`https://finna.fi/Content/about_finnafi\`
+- About Finna: \`https://finna.fi/Content/about\`
+- Participating organizations: \`https://finna.fi/Content/organisations\`
+- More about Finna: \`https://finna.fi/Content/moreabout_finna\`
+`;
+
+  return { markdown };
 }
 
 function stripFacetsIfUnused(

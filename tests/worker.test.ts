@@ -752,9 +752,8 @@ describe('worker', () => {
     const response = await worker.fetch(request, baseEnv);
     expect(response.status).toBe(200);
     const payload = await response.json();
-    expect(payload.result.overview).toBeTruthy();
-    expect(Array.isArray(payload.result.formats)).toBe(true);
-    expect(Array.isArray(payload.result.usageExamples)).toBe(true);
+    expect(typeof payload.result.markdown).toBe('string');
+    expect(payload.result.markdown).toContain('Finna MCP Help');
   });
 
 });
