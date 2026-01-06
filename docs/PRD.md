@@ -267,6 +267,41 @@ Goal: reduce Finna field knowledge required by LLMs while keeping raw `filters` 
 - Mention that usage rights typically apply to online material; combine with `available_online`.
 - Keep `filters` as an advanced escape hatch for fields not covered by helpers.
 - Reference that `format`, `building`, `sector_str_mv`, `category_str_mv` are hierarchical facet fields; values are path‑style IDs with slashes.
+
+## Help Section (draft)
+
+### What Finna contains (concise)
+- Finna.fi is a search service that collects material from hundreds of Finnish organisations under one roof and provides access to millions of items. citeturn0view0turn0view1
+- It includes both online‑available items and materials that are not digitised or have limited access. citeturn0view0
+- Example material types include images, literature, journals, maps, objects, art, and films. citeturn0view0
+- Hundreds of organisations such as archives, libraries, and museums contribute content. citeturn0view1
+
+### Common filtering options (self‑contained)
+Use the top‑level helpers when available; otherwise use `filters.include` with facet values discovered via `facets`.
+- available_online → online_boolean
+- usage_rights → usage_rights_str_mv
+- content_type → format
+- organization → building
+- language → language
+- year → main_date_str (supports ranges like "1920-1980")
+- sector / collection / region / topic / author / era → use facets and pass the selected values via `filters.include`.
+
+### Common record formats (examples)
+Use these as examples and discover more via `facet[]=format`.
+- 0/Book/ — Books (all)
+- 0/Book/eBook/ — E‑books
+- 0/Book/BookSection/ — Book sections/chapters
+- 0/Sound/ — Sound recordings / audiobooks
+- 0/Video/ — Video / film
+- 0/Image/ — Images / photographs
+- 0/Map/ — Maps
+- 0/Article/ — Articles
+- 0/Journal/ — Journals / periodicals
+- 0/PhysicalObject/ — Physical objects (museum items)
+- 0/MusicalScore/ — Musical scores
+
+### Tooling suggestion
+- Add a `help` tool that returns the above guide (overview + helpers + common formats + short usage examples) so clients can fetch it explicitly.
 ## Users
 - TODO
 

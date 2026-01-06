@@ -27,6 +27,7 @@ const toolNames = [
   'get_record',
   'list_organizations',
   'extract_resources',
+  'help',
 ] as const;
 
 type ToolName = (typeof toolNames)[number];
@@ -298,6 +299,15 @@ const ListToolsResponse = {
         required: ['ids'],
       },
     },
+    {
+      name: 'help',
+      description:
+        'Show a compact help guide for filters, formats, and common usage patterns.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+    },
   ],
 };
 
@@ -365,6 +375,8 @@ export default {
             return await handleListOrganizations(env, args);
           case 'extract_resources':
             return await handleExtractResources(env, args);
+          case 'help':
+            return json({ result: buildHelpPayload() });
         }
       } catch (error) {
         return json({ error: 'upstream_error', message: errorMessage(error) });
@@ -982,6 +994,96 @@ function collectFacetValues(entries: unknown, acc: string[] = []): string[] {
     }
   }
   return acc;
+}
+
+function buildHelpPayload(): Record<string, unknown> {
+  return {
+    overview: {
+      summary:
+        'Finna is a unified search across Finnish libraries, archives, and museums. It includes online items as well as material that may require on-site access.',
+    },
+    filterHelpers: [
+      {
+        name: 'available_online',
+        mapsTo: 'online_boolean',
+        description: 'Only items available online.',
+      },
+      {
+        name: 'usage_rights',
+        mapsTo: 'usage_rights_str_mv',
+        description: 'Usage rights codes for online material.',
+        values: [
+          { code: 'usage_A', label: 'Free use' },
+          { code: 'usage_B', label: 'Derivatives, also commercial' },
+          { code: 'usage_C', label: 'No derivatives, also commercial' },
+          { code: 'usage_D', label: 'Derivatives, non-commercial' },
+          { code: 'usage_E', label: 'No derivatives, non-commercial' },
+          { code: 'usage_F', label: 'Permission required / unknown' },
+        ],
+      },
+      { name: 'content_type', mapsTo: 'format', description: 'Record format IDs.' },
+      { name: 'organization', mapsTo: 'building', description: 'Organization IDs.' },
+      { name: 'language', mapsTo: 'language', description: 'ISO 639-3 codes.' },
+      {
+        name: 'year',
+        mapsTo: 'main_date_str',
+        description: 'Publication/creation year or range (e.g., "1920-1980").',
+      },
+    ],
+    formats: [
+      { value: '0/Book/', description: 'Books (all)' },
+      { value: '0/Book/eBook/', description: 'E-books' },
+      { value: '0/Book/BookSection/', description: 'Book sections / chapters' },
+      { value: '0/Sound/', description: 'Sound recordings / audiobooks' },
+      { value: '0/Video/', description: 'Video / film' },
+      { value: '0/Image/', description: 'Images / photographs' },
+      { value: '0/Map/', description: 'Maps' },
+      { value: '0/Article/', description: 'Articles' },
+      { value: '0/Journal/', description: 'Journals / periodicals' },
+      { value: '0/PhysicalObject/', description: 'Physical objects' },
+      { value: '0/MusicalScore/', description: 'Musical scores' },
+    ],
+    usageExamples: [
+      {
+        title: 'Online images from a specific organization',
+        call: {
+          tool: 'search_records',
+          arguments: {
+            available_online: true,
+            content_type: '0/Image/',
+            organization: ['0/Helmet/'],
+            limit: 10,
+          },
+        },
+      },
+      {
+        title: 'Books published in 2020-2025',
+        call: {
+          tool: 'search_records',
+          arguments: { content_type: '0/Book/', year: '2020-2025', limit: 10 },
+        },
+      },
+      {
+        title: 'Filter by usage rights (free use)',
+        call: {
+          tool: 'search_records',
+          arguments: { available_online: true, usage_rights: ['usage_A'], limit: 10 },
+        },
+      },
+      {
+        title: 'Discover organization IDs',
+        call: {
+          tool: 'list_organizations',
+          arguments: { lookfor: 'Helsinki', include_paths: true },
+        },
+      },
+    ],
+    notes: [
+      'Use list_organizations to get organization IDs for filtering.',
+      'Use facets to discover valid values for other filters.',
+      'Hierarchical facets (format, building, sector_str_mv, category_str_mv) use slash-separated IDs.',
+    ],
+  };
 }
 
 function stripFacetsIfUnused(
@@ -1744,7 +1846,7 @@ async function handleJsonRpc(
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
         instructions:
-          'Finna MCP server. Use tools/list and tools/call to search records and fetch metadata.',
+          'Finna MCP server: a unified search across Finnish libraries, archives, and museums. Use search_records for items, list_organizations for organization IDs, and get_record for details. Prefer top-level helpers (available_online, usage_rights, content_type, organization, language, year) before raw filters.',
       }),
     );
   }
@@ -2053,6 +2155,8 @@ async function dispatchTool(
       return await unwrapResult(handleListOrganizations(env, args));
     case 'extract_resources':
       return await unwrapResult(handleExtractResources(env, args));
+    case 'help':
+      return buildHelpPayload();
   }
 }
 

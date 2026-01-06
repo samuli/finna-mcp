@@ -739,4 +739,22 @@ describe('worker', () => {
     await reader.cancel();
   });
 
+  it('help tool returns guide content', async () => {
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: { name: 'help', arguments: {} },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.result.overview).toBeTruthy();
+    expect(Array.isArray(payload.result.formats)).toBe(true);
+    expect(Array.isArray(payload.result.usageExamples)).toBe(true);
+  });
+
 });
