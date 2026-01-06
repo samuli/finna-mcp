@@ -68,10 +68,11 @@ export function buildRecordUrl(params: RecordParams): string {
 }
 
 export function enrichRecordResources(record: Record<string, unknown>, sampleLimit: number) {
-  const { resourceCounts, resourceSamples } = summarizeResources(record, sampleLimit);
+  const withImages = normalizeRecordImages(record);
+  const { resourceCounts, resourceSamples } = summarizeResources(withImages, sampleLimit);
   const contributors = buildContributors(record);
   const merged = {
-    ...record,
+    ...withImages,
     resourceCounts,
     resourceSamples,
   };
@@ -250,6 +251,17 @@ function normalizeImageUrl(url: string): string {
     return `https://api.finna.fi${url}`;
   }
   return url;
+}
+
+function normalizeRecordImages(record: Record<string, unknown>): Record<string, unknown> {
+  const images = Array.isArray(record.images) ? (record.images as string[]) : null;
+  if (!images || images.length === 0) {
+    return record;
+  }
+  return {
+    ...record,
+    images: images.map((image) => (typeof image === 'string' ? normalizeImageUrl(image) : image)),
+  };
 }
 
 function classifyUrl(url: string): string {
