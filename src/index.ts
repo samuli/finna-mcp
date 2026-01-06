@@ -84,6 +84,7 @@ const SearchRecordsArgs = z.object({
   content_type: z.union([z.string(), z.array(z.string())]).optional(),
   organization: z.union([z.string(), z.array(z.string())]).optional(),
   language: z.union([z.string(), z.array(z.string())]).optional(),
+  year: z.union([z.string(), z.array(z.string())]).optional(),
   filters: FilterSchema,
   facets: z.array(z.string()).optional(),
   facetFilters: z.array(z.string()).optional(),
@@ -180,6 +181,12 @@ const ListToolsResponse = {
             items: { type: 'string' },
             description:
               'Language codes (e.g., "fin", "swe", "eng"). Maps to language.',
+          },
+          year: {
+            type: ['string', 'array'],
+            items: { type: 'string' },
+            description:
+              'Publication/creation year or range (e.g., "2026" or "2020-2025"). Maps to main_date_str.',
           },
           filters: {
             type: 'object',
@@ -495,6 +502,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     content_type,
     organization,
     language,
+    year,
     filters,
     facets,
     facetFilters,
@@ -508,6 +516,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     content_type,
     organization,
     language,
+    year,
   });
   const buildingWarnings = collectHierarchicalFilterWarnings(normalizedFilters);
   const normalizedBuilding = await normalizeBuildingFiltersWithCache(
@@ -761,6 +770,9 @@ function mergeTopLevelFilters(
   if (options.language) {
     addFilterValues(merged.include, 'language', coerceStringArray(options.language));
   }
+  if (options.year) {
+    addFilterValues(merged.include, 'main_date_str', coerceStringArray(options.year));
+  }
 
   return Object.keys(merged.include).length > 0 || merged.any || merged.exclude
     ? merged
@@ -815,6 +827,9 @@ function normalizeFilterBucket(
 function mapFilterField(field: string): string {
   if (field === 'building_str_mv') {
     return 'building';
+  }
+  if (field === 'year') {
+    return 'main_date_str';
   }
   return field;
 }

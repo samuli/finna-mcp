@@ -261,6 +261,7 @@ Goal: reduce Finna field knowledge required by LLMs while keeping raw `filters` 
 - `content_type: string[]` → `filters.include.format=[...]` (format IDs)
 - `organization: string[]` → `filters.include.building=[...]` (building IDs)
 - `language: string[]` → `filters.include.language=[...]` (ISO 639‑3 codes)
+- `year: string[]` → `filters.include.main_date_str=[...]` (e.g., `"2026"` or `"2020-2025"`)
 
 ### Documentation notes
 - Mention that usage rights typically apply to online material; combine with `available_online`.
