@@ -15,6 +15,13 @@ type Env = {
   FINNA_MCP_DISABLE_CACHE?: string;
 };
 
+const HIERARCHICAL_FACET_FIELDS = new Set([
+  'building',
+  'format',
+  'sector_str_mv',
+  'category_str_mv',
+]);
+
 const toolNames = [
   'search_records',
   'get_record',
@@ -207,7 +214,7 @@ const ListToolsResponse = {
     {
       name: 'list_organizations',
       description:
-        'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use the returned value strings in search_records filters.include.building. Unfiltered results return only the top 2 levels with meta.pruned=true; use lookfor/filters for deeper levels.',
+        'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use only the returned value strings in search_records filters.include.building (path labels are for display, not filtering). Unfiltered results return only the top 2 levels with meta.pruned=true; use lookfor/filters for deeper levels.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -455,7 +462,14 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     fields,
     sampleLimit,
   } = parsed.data;
-  const normalizedFilters = normalizeFilters(filters);
+  let normalizedFilters = normalizeFilters(filters);
+  const buildingWarnings = collectHierarchicalFilterWarnings(normalizedFilters);
+  const normalizedBuilding = await normalizeBuildingFiltersWithCache(
+    normalizedFilters,
+    env,
+    lng,
+  );
+  normalizedFilters = normalizedBuilding.filters;
   const normalizedSort = normalizeSort(sort);
   const selectedFields = fields ?? resolveSearchFieldsPreset(fields_preset);
 
@@ -499,6 +513,8 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     limit,
     resultCount: payload.resultCount,
     records: cleaned,
+    extraInfo: normalizedBuilding.info,
+    extraWarning: buildingWarnings.concat(normalizedBuilding.warnings),
   });
 
   return json({
@@ -698,13 +714,153 @@ function mapFilterField(field: string): string {
 }
 
 function mapFilterValue(field: string, value: string): string {
-  if (field === 'building' && value.includes('/') && !value.endsWith('/')) {
+  if (/%2f/i.test(value)) {
+    const decoded = safeDecodeURIComponent(value);
+    if (decoded) {
+      value = decoded;
+    }
+  }
+  if (isHierarchicalFacetField(field) && value.includes('/') && !value.endsWith('/')) {
     return `${value}/`;
   }
   if (field === 'format' && value.toLowerCase() === 'book') {
     return '0/Book/';
   }
   return value;
+}
+
+function safeDecodeURIComponent(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+async function normalizeBuildingFiltersWithCache(
+  filters: FilterInput | undefined,
+  env: Env,
+  lng?: string,
+): Promise<{ filters: FilterInput | undefined; info?: string; warnings: string[] }> {
+  const warnings: string[] = [];
+  if (!filters) {
+    return { filters, warnings };
+  }
+  const buildingValues = collectHierarchicalFilterValues(filters);
+  if (buildingValues.length === 0) {
+    return { filters, warnings };
+  }
+  if (!env.CACHE_BUCKET) {
+    return { filters, warnings };
+  }
+  const cacheKey = buildOrganizationsCacheKey(lng ?? 'fi', 'AllFields');
+  const cached = await readOrganizationsCache(env, cacheKey);
+  if (!cached) {
+    return { filters, warnings };
+  }
+  const entries = collectFacetValues(cached.facets?.building);
+  if (entries.length === 0) {
+    return { filters, warnings };
+  }
+  const canonicalMap = new Map<string, string | null>();
+  for (const value of entries) {
+    const key = value.toLowerCase();
+    if (!canonicalMap.has(key)) {
+      canonicalMap.set(key, value);
+    } else if (canonicalMap.get(key) !== value) {
+      canonicalMap.set(key, null);
+    }
+  }
+  const replacements: Array<{ from: string; to: string }> = [];
+  const normalizeBucket = (bucket?: Record<string, string[]>) => {
+    if (!bucket?.building) return;
+    bucket.building = bucket.building.map((value) => {
+      const direct = canonicalMap.get(value.toLowerCase());
+      if (direct && direct !== value) {
+        replacements.push({ from: value, to: direct });
+        return direct;
+      }
+      if (direct === null) {
+        warnings.push(
+          `Building filter "${value}" matched multiple organization values; leaving as-is.`,
+        );
+      }
+      return value;
+    });
+  };
+  normalizeBucket(filters.include);
+  normalizeBucket(filters.any);
+  normalizeBucket(filters.exclude);
+
+  const info =
+    replacements.length > 0
+      ? `Normalized building filter values to canonical case (${replacements
+          .slice(0, 3)
+          .map((entry) => `${entry.from} → ${entry.to}`)
+          .join(', ')}${replacements.length > 3 ? ', …' : ''}).`
+      : undefined;
+  return { filters, info, warnings };
+}
+
+function collectHierarchicalFilterWarnings(filters?: FilterInput): string[] {
+  if (!filters) return [];
+  const values = collectHierarchicalFilterValues(filters);
+  if (values.length === 0) return [];
+  const warnings: string[] = [];
+  const invalid = values.filter((value) => !value.includes('/'));
+  if (invalid.length > 0) {
+    warnings.push(
+      'Hierarchical facet filters should use path IDs like "0/Book/" or "0/Helmet/".',
+    );
+  }
+  const spaced = values.filter((value) => /\s/.test(value));
+  if (spaced.length > 0) {
+    warnings.push(
+      'Hierarchical facet filter values should not contain spaces; use the facet value, not the display label.',
+    );
+  }
+  return warnings;
+}
+
+function collectHierarchicalFilterValues(filters: FilterInput): string[] {
+  const values: string[] = [];
+  const collectFrom = (bucket?: Record<string, string[]>) => {
+    if (!bucket) return;
+    for (const [field, fieldValues] of Object.entries(bucket)) {
+      if (!isHierarchicalFacetField(field)) continue;
+      for (const value of fieldValues) {
+        if (typeof value === 'string') {
+          values.push(value);
+        }
+      }
+    }
+  };
+  collectFrom(filters.include);
+  collectFrom(filters.any);
+  collectFrom(filters.exclude);
+  return values;
+}
+
+function isHierarchicalFacetField(field: string): boolean {
+  return HIERARCHICAL_FACET_FIELDS.has(field);
+}
+
+function collectFacetValues(entries: unknown, acc: string[] = []): string[] {
+  if (!Array.isArray(entries)) {
+    return acc;
+  }
+  for (const entry of entries) {
+    const value = entry && typeof entry === 'object' ? entry.value : undefined;
+    if (typeof value === 'string') {
+      acc.push(value);
+    }
+    const children =
+      entry && typeof entry === 'object' ? (entry as { children?: unknown }).children : undefined;
+    if (children) {
+      collectFacetValues(children, acc);
+    }
+  }
+  return acc;
 }
 
 function stripFacetsIfUnused(
@@ -1363,6 +1519,8 @@ function buildSearchMeta(options: {
   limit?: number;
   resultCount?: number;
   records: Record<string, unknown>[];
+  extraInfo?: string;
+  extraWarning?: string[];
 }): Record<string, unknown> | null {
   const warnings: string[] = [];
   const info: string[] = [];
@@ -1416,6 +1574,12 @@ function buildSearchMeta(options: {
     info.push(
       'No online resources found in these records; try fields_preset="full" or includeRawData for more source-specific links.',
     );
+  }
+  if (options.extraWarning && options.extraWarning.length > 0) {
+    warnings.push(...options.extraWarning);
+  }
+  if (options.extraInfo) {
+    info.push(options.extraInfo);
   }
 
   if (warnings.length === 0 && info.length === 0) {

@@ -192,6 +192,67 @@ describe('worker', () => {
     expect(calledUrl).toContain('filter%5B%5D=format%3A%220%2FBook%2F%22');
   });
 
+  it('warns when building filter values are invalid', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ resultCount: 0, records: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: {
+          name: 'search_records',
+          arguments: {
+            lookfor: '',
+            filters: { include: { building: ['Helmet', '0%2FHelmet%2F'] } },
+            limit: 0,
+          },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    const payload = await response.json();
+    expect(payload.result.meta?.warning).toContain('Hierarchical facet');
+  });
+
+  it('decodes URL-encoded building values before filtering', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ resultCount: 0, records: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: {
+          name: 'search_records',
+          arguments: {
+            lookfor: '',
+            filters: { include: { building: ['0%2FHelmet%2F'] } },
+            limit: 0,
+          },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    expect(response.status).toBe(200);
+    const calledUrl = String(mockFetch.mock.calls[0][0]);
+    expect(calledUrl).toContain('filter%5B%5D=building%3A%220%2FHelmet%2F%22');
+  });
+
   it('search_records keeps facets when requested', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch.mockResolvedValueOnce(

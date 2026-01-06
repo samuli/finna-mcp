@@ -231,14 +231,19 @@ Use these in `filters.include.format` when narrowing by type:
 ### Building filter reliability (`filters.include.building`)
 - Reported issue: reviewer claims building filter did not narrow results (e.g., `filters.include.building=["0/SATAKIRJASTOT/"]`).
 - Current implementation: `filters.include.building` is translated into `filter[]=building:"<value>"` and matches Finna’s API filter syntax.
-- Likely root causes:
-  - Client used building label instead of value ID (e.g., "Satakirjastot" vs `0/SATAKIRJASTOT/`), or case mismatch.
-  - Client only saw summary output and assumed filters were ignored.
+- Likely root causes (per Finna docs):
+  - **Case-sensitive value mismatch**: building values must match the facet `value` exactly (e.g., `0/Satakirjastot/` vs `0/SATAKIRJASTOT/`).
+  - **Encoding issues**: Finna notes that incorrectly encoded parameter values are discarded. This can silently drop filters and lead to unexpected results.
+  - **FacetFilter confusion**: `facetFilter` is documented as limiting facet buckets only (not records), so “working” queries using `facetFilters` likely succeeded due to other parameters.
 - Proposed next steps:
   - Add an integration test that validates a known building filter actually narrows results and that returned records include the building path.
   - Add `meta.warning` when a building filter value does not look like a Finna ID path (e.g., no `/`), reminding to use list_organizations values.
   - If false positives remain, investigate mapping labels to IDs via cached organization list (optional).
   - Normalize missing trailing slash in building filter values (e.g., `0/Helmet` -> `0/Helmet/`).
+  - Consider optional case-normalization using cached organization list (case-insensitive match -> canonical value + `meta.info`).
+  - Decode URL-encoded building values on the server to reduce client errors (silent fix).
+  - Warn when building filter values include spaces (likely a path label, not an ID).
+  - Apply the same validations to hierarchical facets (per Finna docs: `format`, `building`, `sector_str_mv`, `category_str_mv`).
 
 ## Users
 - TODO
