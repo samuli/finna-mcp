@@ -163,7 +163,7 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Usage rights options: public_domain, open, commercial_noderivatives, noncommercial, noncommercial_noderivatives, restricted.',
+              'Usage rights options: public_domain (Free use, no restrictions), open (Commercial use + derivatives allowed), commercial_noderivatives (Commercial use ok, no modifications), noncommercial (Derivatives ok, non-commercial only), noncommercial_noderivatives (Non-commercial, no modifications), restricted (Permission required or unknown).',
           },
           format: {
             type: ['string', 'array'],
