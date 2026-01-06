@@ -187,7 +187,7 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Publication/creation year filter: use a single year ("2024"), a range string ("2020-2025"), or an array of specific years/ranges (["1999","2005-2010"]).',
+              'Publication/creation year filter: use a single year ("2024") or a range ("2020-2025"). Open-ended ranges like "2010-*" are supported.',
           },
           filters: {
             type: 'object',
@@ -784,7 +784,13 @@ function mergeTopLevelFilters(
     addFilterValues(merged.include, 'language', coerceStringArray(options.language));
   }
   if (options.year) {
-    addFilterValues(merged.include, 'main_date_str', coerceStringArray(options.year));
+    const normalizedYear = normalizeYearValues(coerceStringArray(options.year));
+    if (normalizedYear.exact.length > 0) {
+      addFilterValues(merged.include, 'main_date_str', normalizedYear.exact);
+    }
+    if (normalizedYear.ranges.length > 0) {
+      addFilterValues(merged.include, 'search_daterange_mv', normalizedYear.ranges);
+    }
   }
 
   return Object.keys(merged.include).length > 0 || merged.any || merged.exclude
@@ -794,6 +800,35 @@ function mergeTopLevelFilters(
 
 function coerceStringArray(value: string | string[]): string[] {
   return Array.isArray(value) ? value : [value];
+}
+
+function normalizeYearValues(values: string[]): { exact: string[]; ranges: string[] } {
+  const exact: string[] = [];
+  const ranges: string[] = [];
+  for (const raw of values) {
+    if (typeof raw !== 'string') {
+      continue;
+    }
+    const value = raw.trim();
+    if (!value) {
+      continue;
+    }
+    const upper = value.toUpperCase();
+    if (upper.includes('TO') || value.startsWith('[') || value.endsWith(']')) {
+      const wrapped = value.startsWith('[') ? value : `[${value}]`;
+      ranges.push(wrapped);
+      continue;
+    }
+    if (value.includes('-')) {
+      const [startRaw = '', endRaw = ''] = value.split('-', 2);
+      const start = startRaw.trim() || '*';
+      const end = endRaw.trim() || '*';
+      ranges.push(`[${start} TO ${end}]`);
+      continue;
+    }
+    exact.push(value);
+  }
+  return { exact, ranges };
 }
 
 function normalizeUsageRightsValues(values: string[]): string[] {

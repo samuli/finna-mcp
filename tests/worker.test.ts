@@ -357,7 +357,9 @@ describe('worker', () => {
     expect(calledUrl).toContain('filter%5B%5D=format%3A%220%2FBook%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=building%3A%220%2FHelmet%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=language%3A%22fin%22');
-    expect(calledUrl).toContain('filter%5B%5D=main_date_str%3A%222020-2025%22');
+    expect(calledUrl).toContain(
+      'filter%5B%5D=search_daterange_mv%3A%22%5B2020+TO+2025%5D%22',
+    );
   });
 
   it('list_organizations uses building facet', async () => {
