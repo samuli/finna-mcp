@@ -338,7 +338,7 @@ describe('worker', () => {
           arguments: {
             query: '',
             available_online: true,
-            usage_rights: ['usage_A'],
+            usage_rights: ['public_domain'],
             format: '0/Book/',
             organization: ['0/Helmet/'],
             language: 'fin',

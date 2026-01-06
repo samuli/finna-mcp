@@ -163,7 +163,7 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Usage rights codes (usage_A..usage_F). usage_A=Free use, usage_B=Derivatives+commercial, usage_C=No derivatives+commercial, usage_D=Derivatives+non-commercial, usage_E=No derivatives+non-commercial, usage_F=Permission required/unknown.',
+              'Usage rights options: public_domain, open, commercial_noderivatives, noncommercial, noncommercial_noderivatives, restricted.',
           },
           format: {
             type: ['string', 'array'],
@@ -771,7 +771,7 @@ function mergeTopLevelFilters(
     addFilterValues(
       merged.include,
       'usage_rights_str_mv',
-      coerceStringArray(options.usage_rights),
+      normalizeUsageRightsValues(coerceStringArray(options.usage_rights)),
     );
   }
   if (options.format) {
@@ -794,6 +794,28 @@ function mergeTopLevelFilters(
 
 function coerceStringArray(value: string | string[]): string[] {
   return Array.isArray(value) ? value : [value];
+}
+
+function normalizeUsageRightsValues(values: string[]): string[] {
+  const map: Record<string, string> = {
+    public_domain: 'usage_A',
+    open: 'usage_B',
+    commercial_noderivatives: 'usage_C',
+    noncommercial: 'usage_D',
+    noncommercial_noderivatives: 'usage_E',
+    restricted: 'usage_F',
+  };
+  return values
+    .filter((value) => typeof value === 'string')
+    .map((value) => {
+      const normalized = value.trim();
+      if (!normalized) {
+        return normalized;
+      }
+      const key = normalized.toLowerCase();
+      return map[key] ?? normalized;
+    })
+    .filter((value) => value.length > 0);
 }
 
 function addFilterValues(
@@ -1025,7 +1047,7 @@ More info: \`https://github.com/samuli/finna-mcp\`
 
 3) Free-use online material
 \`\`\`json
-{"available_online": true, "usage_rights": ["usage_A"], "limit": 10}
+{"available_online": true, "usage_rights": ["public_domain"], "limit": 10}
 \`\`\`
 
 4) Recent additions from a library system
@@ -1068,13 +1090,13 @@ More info: \`https://github.com/samuli/finna-mcp\`
 {"filters": {"include": {"first_indexed": ["[NOW-1MONTHS/DAY TO *]"]}}, "sort": "newest", "limit": 10}
 \`\`\`
 
-### Usage rights filter codes
-- \`usage_A\` = Free use
-- \`usage_B\` = Derivatives, also commercial
-- \`usage_C\` = No derivatives, also commercial
-- \`usage_D\` = Derivatives, non-commercial
-- \`usage_E\` = No derivatives, non-commercial
-- \`usage_F\` = Permission required / unknown
+### Usage rights options
+- \`public_domain\` — Free use, no restrictions
+- \`open\` — Commercial use + derivatives allowed
+- \`commercial_noderivatives\` — Commercial use ok, no modifications
+- \`noncommercial\` — Derivatives ok, non-commercial only
+- \`noncommercial_noderivatives\` — Non-commercial, no modifications
+- \`restricted\` — Permission required or unknown
 
 ## Common record formats (examples)
 Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
