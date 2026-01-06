@@ -169,7 +169,7 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Organizations (IDs from list_organizations).'
+              'Organization IDs (Use list_organizations to discover IDs. Does not support labels/organization names).'
           },
           language: {
             type: ['string', 'array'],
@@ -1054,12 +1054,16 @@ async function normalizeBuildingFiltersWithCache(
   if (!cached) {
     return { filters, warnings };
   }
-  const entries = collectFacetValues(cached.facets?.building);
+  const entries = collectFacetEntries(cached.facets?.building);
   if (entries.length === 0) {
     return { filters, warnings };
   }
   const canonicalMap = new Map<string, string | null>();
-  for (const value of entries) {
+  for (const entry of entries) {
+    const value = entry.value;
+    if (!value) {
+      continue;
+    }
     const key = value.toLowerCase();
     if (!canonicalMap.has(key)) {
       canonicalMap.set(key, value);
@@ -1067,10 +1071,23 @@ async function normalizeBuildingFiltersWithCache(
       canonicalMap.set(key, null);
     }
   }
+  const labelIndex = buildOrganizationLabelIndex(entries);
   const replacements: Array<{ from: string; to: string }> = [];
+  const fuzzyReplacements: Array<{ from: string; to: string }> = [];
   const normalizeBucket = (bucket?: Record<string, string[]>) => {
     if (!bucket?.building) return;
     bucket.building = bucket.building.map((value) => {
+      if (!value.includes('/')) {
+        const resolved = resolveOrganizationLabel(value, labelIndex);
+        if (resolved?.value) {
+          fuzzyReplacements.push({ from: value, to: resolved.value });
+          return resolved.value;
+        }
+        if (resolved?.warning) {
+          warnings.push(resolved.warning);
+        }
+        return value;
+      }
       const direct = canonicalMap.get(value.toLowerCase());
       if (direct && direct !== value) {
         replacements.push({ from: value, to: direct });
@@ -1088,13 +1105,24 @@ async function normalizeBuildingFiltersWithCache(
   normalizeBucket(filters.any);
   normalizeBucket(filters.exclude);
 
-  const info =
-    replacements.length > 0
-      ? `Normalized building filter values to canonical case (${replacements
-          .slice(0, 3)
-          .map((entry) => `${entry.from} → ${entry.to}`)
-          .join(', ')}${replacements.length > 3 ? ', …' : ''}).`
-      : undefined;
+  const infoParts: string[] = [];
+  if (replacements.length > 0) {
+    infoParts.push(
+      `Normalized organization codes to canonical case (${replacements
+        .slice(0, 3)
+        .map((entry) => `${entry.from} → ${entry.to}`)
+        .join(', ')}${replacements.length > 3 ? ', …' : ''}).`,
+    );
+  }
+  if (fuzzyReplacements.length > 0) {
+    infoParts.push(
+      `Resolved organization labels to codes (${fuzzyReplacements
+        .slice(0, 3)
+        .map((entry) => `${entry.from} → ${entry.to}`)
+        .join(', ')}${fuzzyReplacements.length > 3 ? ', …' : ''}).`,
+    );
+  }
+  const info = infoParts.length > 0 ? infoParts.join(' ') : undefined;
   return { filters, info, warnings };
 }
 
@@ -1159,12 +1187,86 @@ function collectFacetValues(entries: unknown, acc: string[] = []): string[] {
   return acc;
 }
 
+type FacetEntry = { value: string; label: string; translated: string };
+
+function collectFacetEntries(entries: unknown, acc: FacetEntry[] = []): FacetEntry[] {
+  if (!Array.isArray(entries)) {
+    return acc;
+  }
+  for (const entry of entries) {
+    if (entry && typeof entry === 'object') {
+      const record = entry as Record<string, unknown>;
+      const value = typeof record.value === 'string' ? record.value : '';
+      const label = typeof record.label === 'string' ? record.label : '';
+      const translated = typeof record.translated === 'string' ? record.translated : '';
+      if (value) {
+        acc.push({ value, label, translated });
+      }
+      if (Array.isArray(record.children)) {
+        collectFacetEntries(record.children, acc);
+      }
+    }
+  }
+  return acc;
+}
+
+function buildOrganizationLabelIndex(entries: FacetEntry[]): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+  for (const entry of entries) {
+    const labels = [entry.label, entry.translated].filter(Boolean);
+    for (const label of labels) {
+      const key = label.toLowerCase();
+      const list = index.get(key) ?? [];
+      list.push(entry.value);
+      index.set(key, list);
+    }
+  }
+  return index;
+}
+
+function resolveOrganizationLabel(
+  input: string,
+  index: Map<string, string[]>,
+): { value?: string; warning?: string } | null {
+  const query = input.trim().toLowerCase();
+  if (!query) {
+    return null;
+  }
+  const exact = index.get(query);
+  if (exact && exact.length === 1) {
+    return { value: exact[0] };
+  }
+  if (exact && exact.length > 1) {
+    return {
+      warning: `Organization label "${input}" matched multiple organization codes; use list_organizations to pick the right one.`,
+    };
+  }
+  const matches: string[] = [];
+  for (const [label, values] of index.entries()) {
+    if (label.includes(query)) {
+      matches.push(...values);
+    }
+  }
+  const unique = Array.from(new Set(matches));
+  if (unique.length === 1) {
+    return { value: unique[0] };
+  }
+  if (unique.length > 1) {
+    return {
+      warning: `Organization label "${input}" matched multiple organization codes; use list_organizations to pick the right one.`,
+    };
+  }
+  return null;
+}
+
 function buildHelpPayload(): Record<string, unknown> {
   const markdown = `# Finna.fi
 
 Finna.fi is a unified search across Finnish libraries, archives, and museums. It includes online items as well as material that may require on-site access.
 
 Note that this [MCP server](https://github.com/samuli/finna-mcp) is not an official Finna service.
+
+Search is keyword-based, NOT full-text search
 
 ## Usage examples
 1) Online images from an organization
@@ -1255,13 +1357,22 @@ Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
 
 Note that metadata varies between records and formats.
 
-### People/Organizations
+### Organization Structure
+
+Organizations have hierarchical codes:
+- 0/Helmet/ - Helsinki Metropolitan Area Libraries (top level)
+- 1/Helmet/h/ - Helsinki city (second level)
+- 2/Helmet/h/h00l/ - Specific location (third level)
+
+**For filtering, always use the VALUE string (e.g., "0/Helmet/"), NOT the label or path.**
+
+### Authors/People
 - **authors.primary** - Main creators (book author, photographer, composer)
 - **authors.secondary** - Supporting creators (translator, editor, illustrator)
   - Includes role information: "translator", "kuvittaja" (illustrator)
 - **authors.corporate** - Institutional authors (publishers, organizations)
 - **contributors** - Additional people involved (rare, format-specific)
-- ❌ **nonPresenterAuthors** - Advanced field, rarely needed
+- **nonPresenterAuthors** - Advanced field, rarely needed
 
 ### Content
 - **title** - Main title of the work
@@ -1285,6 +1396,18 @@ Note that metadata varies between records and formats.
 - **recordUrl** - Link to full Finna record
 - **onlineUrls** - Direct access to digital content
 - **images** - Thumbnail/preview images
+
+## Troubleshooting
+
+**No results with organization filter?**
+→ Ensure you're using the VALUE code (0/HKM/) not the label
+
+**Multi-term query warning?**
+→ Try search_mode="advanced" with advanced_operator="AND"
+→ Or shorten your query to 1-2 keywords
+
+**Want to count results?**
+→ Use limit=0 and read resultCount
 
 ## More information
 - Finna overview: \`https://finna.fi/Content/about_finnafi\`

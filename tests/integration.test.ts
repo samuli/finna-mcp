@@ -297,4 +297,39 @@ suite('integration (local wrangler)', () => {
     },
     15000,
   );
+
+  it(
+    'search_records resolves organization label filters',
+    async () => {
+      if (!available) {
+        return;
+      }
+      const response = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          method: 'callTool',
+          params: {
+            name: 'search_records',
+            arguments: {
+              query: '',
+              limit: 0,
+              lng: 'fi',
+              filters: {
+                include: { format: ['0/Image/'], organization: ['Helsingin kaupunginmuseo'] },
+              },
+            },
+          },
+        }),
+      });
+      expect(response.ok).toBe(true);
+      const payload = await response.json();
+      const count = Number(payload.result?.resultCount ?? 0);
+      if (!Number.isFinite(count)) {
+        return;
+      }
+      expect(count).toBeGreaterThan(0);
+    },
+    15000,
+  );
 });
