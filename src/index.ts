@@ -30,6 +30,13 @@ const CallToolSchema = z.object({
   arguments: z.record(z.unknown()).optional(),
 });
 
+const JsonRpcRequestSchema = z.object({
+  jsonrpc: z.literal('2.0'),
+  id: z.union([z.string(), z.number()]).optional(),
+  method: z.string(),
+  params: z.record(z.unknown()).optional(),
+});
+
 const StructuredFilterSchema = z
   .object({
     include: z.record(z.array(z.string())).optional(),
@@ -224,13 +231,26 @@ const ListToolsResponse = {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method !== 'POST') {
-      return new Response('Method Not Allowed', { status: 405 });
-    }
-
     const url = new URL(request.url);
     if (url.pathname !== '/mcp') {
       return new Response('Not Found', { status: 404 });
+    }
+
+    if (request.method === 'GET') {
+      const accept = request.headers.get('accept') ?? '';
+      if (accept.includes('text/event-stream')) {
+        return handleSseRequest(request);
+      }
+      return new Response('Method Not Allowed', { status: 405 });
+    }
+
+    if (request.method === 'POST' && url.searchParams.get('session')) {
+      const body = await request.json().catch(() => null);
+      return await handleSsePost(url.searchParams.get('session') ?? '', body, env);
+    }
+
+    if (request.method !== 'POST') {
+      return new Response('Method Not Allowed', { status: 405 });
     }
 
     const body = await request.json().catch(() => null);
@@ -1472,6 +1492,75 @@ async function handleJsonRpc(body: JsonRpcRequest, env: Env): Promise<Response> 
   }
 
   return json(jsonRpcError(id, -32601, 'Method not found'), 200);
+}
+
+const sseSessions = new Map<
+  string,
+  { controller: ReadableStreamDefaultController<Uint8Array> }
+>();
+
+function handleSseRequest(request: Request): Response {
+  const accept = request.headers.get('accept') ?? '';
+  if (!accept.includes('text/event-stream')) {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+
+  const sessionId = crypto.randomUUID();
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      sseSessions.set(sessionId, { controller });
+      const endpointUrl = new URL(request.url);
+      endpointUrl.searchParams.set('session', sessionId);
+      const payload = `event: endpoint\ndata: ${endpointUrl.toString()}\n\n`;
+      controller.enqueue(encoder.encode(payload));
+    },
+    cancel() {
+      sseSessions.delete(sessionId);
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    },
+  });
+}
+
+async function handleSsePost(
+  sessionId: string,
+  body: unknown,
+  env: Env,
+): Promise<Response> {
+  try {
+    const session = sseSessions.get(sessionId);
+    if (!session) {
+      return new Response('Session Not Found', { status: 404 });
+    }
+
+    const rpcParsed = JsonRpcRequestSchema.safeParse(body);
+    if (!rpcParsed.success) {
+      return json({ error: 'invalid_request' }, 400);
+    }
+
+    const response = await handleJsonRpc(rpcParsed.data, env);
+    const jsonBody = await response.text();
+    const encoder = new TextEncoder();
+    const message = `event: message\ndata: ${jsonBody}\n\n`;
+    try {
+      session.controller.enqueue(encoder.encode(message));
+    } catch (error) {
+      console.error('Failed to enqueue SSE message', error);
+    }
+
+    return new Response(null, { status: 202 });
+  } catch (error) {
+    console.error('Unhandled SSE post error', error);
+    return json({ error: 'internal_error', message: errorMessage(error) }, 500);
+  }
 }
 
 function isJsonRpc(body: unknown): body is JsonRpcRequest {

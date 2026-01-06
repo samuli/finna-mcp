@@ -507,4 +507,60 @@ describe('worker', () => {
     expect(payload.result.meta.compact).toBe(true);
   });
 
+  it('opens SSE endpoint stream', async () => {
+    const request = new Request('http://example.com/mcp', {
+      method: 'GET',
+      headers: { accept: 'text/event-stream' },
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    if (!reader) return;
+    const { value } = await reader.read();
+    const text = new TextDecoder().decode(value);
+    expect(text).toContain('event: endpoint');
+    await reader.cancel();
+  });
+
+  it('routes JSON-RPC over SSE session', async () => {
+    const sseRequest = new Request('http://example.com/mcp', {
+      method: 'GET',
+      headers: { accept: 'text/event-stream' },
+    });
+
+    const sseResponse = await worker.fetch(sseRequest, baseEnv);
+    const reader = sseResponse.body?.getReader();
+    if (!reader) {
+      throw new Error('Missing SSE reader');
+    }
+    const first = await reader.read();
+    const text = new TextDecoder().decode(first.value);
+    const endpointLine = text
+      .split('\n')
+      .find((line) => line.startsWith('data: '))
+      ?.slice(6);
+    if (!endpointLine) {
+      throw new Error('Missing endpoint data');
+    }
+
+    const postRequest = new Request(endpointLine, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),
+    });
+
+    const postResponse = await worker.fetch(postRequest, baseEnv);
+    expect(postResponse.status).toBe(202);
+
+    const second = await reader.read();
+    const messageText = new TextDecoder().decode(second.value);
+    expect(messageText).toContain('event: message');
+    expect(messageText).toContain('"jsonrpc":"2.0"');
+    await reader.cancel();
+  });
+
 });
