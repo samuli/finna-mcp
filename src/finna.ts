@@ -27,15 +27,6 @@ type RecordParams = {
   fields?: string[];
 };
 
-type FacetParams = {
-  apiBase?: string;
-  lookfor: string;
-  type: string;
-  lng?: string;
-  filters?: FilterInput;
-  facet: string;
-};
-
 const DEFAULT_API_BASE = 'https://api.finna.fi/v1';
 
 export function buildSearchUrl(params: SearchParams): string {
@@ -73,19 +64,6 @@ export function buildRecordUrl(params: RecordParams): string {
     url.searchParams.set('lng', params.lng);
   }
   appendFields(url, params.fields);
-  return url.toString();
-}
-
-export function buildFacetUrl(params: FacetParams): string {
-  const url = new URL(`${baseUrl(params.apiBase)}/search`);
-  url.searchParams.set('lookfor', params.lookfor);
-  url.searchParams.set('type', params.type);
-  url.searchParams.set('limit', '0');
-  if (params.lng) {
-    url.searchParams.set('lng', params.lng);
-  }
-  url.searchParams.append('facet[]', params.facet);
-  appendFilters(url, params.filters);
   return url.toString();
 }
 

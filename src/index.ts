@@ -147,7 +147,7 @@ const ListToolsResponse = {
               'Field preset: "compact" (ids + title + urls), "media" (adds images/external resources), "full" (adds richer metadata). Overrides default fields unless fields is set.',
           },
           page: { type: 'number' },
-          limit: { type: 'number', description: 'Number of results per page (20, 50 or 100). To count records, set limit=0 and read resultCount.' },
+          limit: { type: 'number', description: 'Number of results per page (0-100). To count records, set limit=0 and read resultCount.' },
           sort: {
             type: 'string',
             description:
@@ -169,7 +169,7 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Content types (format IDs). Maps to format. Examples: "0/Book/", "1/Book/eBook/", "0/Image/"',
+              'Content types (format IDs). Maps to format. Examples: "0/Book/", "0/Book/eBook/", "0/Image/"',
           },
           organization: {
             type: ['string', 'array'],
@@ -999,10 +999,10 @@ function collectFacetValues(entries: unknown, acc: string[] = []): string[] {
 function buildHelpPayload(): Record<string, unknown> {
   const markdown = `# Finna MCP Help
 
-## MCP server for Finna Finna.fi's cultural and scientific material in Finland.
+## MCP server for Finna.fi's cultural and scientific material in Finland.
 Finna.fi is a unified search across Finnish libraries, archives, and museums. It includes online items as well as material that may require on-site access.
 
-Note that this MCP servier is not an official Finna service.
+Note that this MCP server is not an official Finna service.
 More info: \`https://github.com/samuli/finna-mcp\`
 
 ## Filter helpers (recommended)
@@ -2131,6 +2131,9 @@ function summarizeToolResult(name: ToolName, result: Record<string, unknown> | n
     case 'extract_resources': {
       const resources = asArray(result.resources);
       return `extract_resources: ${resources ? resources.length : 0} record(s)`;
+    }
+    case 'help': {
+      return 'help: ok';
     }
   }
 }

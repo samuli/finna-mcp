@@ -192,6 +192,42 @@ describe('worker', () => {
     expect(calledUrl).toContain('filter%5B%5D=format%3A%220%2FBook%2F%22');
   });
 
+  it('search_records builds advanced search parameters', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ resultCount: 0, records: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: {
+          name: 'search_records',
+          arguments: {
+            lookfor: 'deep learning algorithm',
+            search_mode: 'advanced',
+            advanced_operator: 'OR',
+            limit: 5,
+          },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    expect(response.status).toBe(200);
+    const calledUrl = String(mockFetch.mock.calls[0][0]);
+    expect(calledUrl).toContain('join=OR');
+    expect(calledUrl).toContain('lookfor0%5B%5D=deep');
+    expect(calledUrl).toContain('lookfor0%5B%5D=learning');
+    expect(calledUrl).toContain('lookfor0%5B%5D=algorithm');
+    expect(calledUrl).toContain('bool0%5B%5D=OR');
+  });
+
   it('warns when building filter values are invalid', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch.mockResolvedValueOnce(
