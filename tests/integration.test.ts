@@ -65,7 +65,7 @@ suite('integration (local wrangler)', () => {
     }
   });
 
-  it('get_record and extract_resources work for a returned id', async () => {
+  it('get_record returns details for a returned id', async () => {
     if (!available) {
       return;
     }
@@ -101,12 +101,12 @@ suite('integration (local wrangler)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         method: 'callTool',
-        params: { name: 'extract_resources', arguments: { ids: [recordId], sampleLimit: 3 } },
+        params: { name: 'get_record', arguments: { ids: [recordId], includeResources: true, resourcesLimit: 3 } },
       }),
     });
     expect(resourcesResponse.ok).toBe(true);
     const resourcesPayload = await resourcesResponse.json();
-    expect(resourcesPayload.result.resources?.[0]?.id).toBe(recordId);
+    expect(resourcesPayload.result.records?.[0]?.id).toBe(recordId);
   });
 
   it(

@@ -494,7 +494,7 @@ describe('worker', () => {
     expect(calledUrl).not.toContain('field%5B%5D=buildings');
   });
 
-  it('extract_resources returns samples per record', async () => {
+  it('get_record can include resource list', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch.mockResolvedValueOnce(
       new Response(
@@ -517,13 +517,13 @@ describe('worker', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         method: 'callTool',
-        params: { name: 'extract_resources', arguments: { ids: ['x.1'], sampleLimit: 3 } },
+        params: { name: 'get_record', arguments: { ids: ['x.1'], includeResources: true, resourcesLimit: 3 } },
       }),
     });
 
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
-    expect(payload.result.resources[0].resources.length).toBe(2);
+    expect(payload.result.records[0].resources.length).toBe(2);
   });
 
   it('list_organizations parses hierarchy from UI HTML', async () => {

@@ -26,7 +26,6 @@ const toolNames = [
   'search_records',
   'get_record',
   'list_organizations',
-  'extract_resources',
   'help',
 ] as const;
 
@@ -98,6 +97,8 @@ const GetRecordArgs = z.object({
   fields: z.array(z.string()).optional(),
   fields_preset: z.enum(FIELD_PRESET_OPTIONS).optional(),
   includeRawData: z.boolean().optional(),
+  includeResources: z.boolean().optional(),
+  resourcesLimit: z.number().int().min(1).max(10).optional(),
   sampleLimit: z.number().int().min(1).max(5).optional(),
 });
 
@@ -109,12 +110,6 @@ const ListOrganizationsArgs = z.object({
   max_depth: z.number().int().min(1).max(6).optional(),
   include_paths: z.boolean().optional(),
   compact: z.boolean().optional(),
-});
-
-const ExtractResourcesArgs = z.object({
-  ids: z.array(z.string()).min(1),
-  lng: z.string().optional(),
-  sampleLimit: z.number().int().min(1).max(5).optional(),
 });
 
 const ListToolsResponse = {
@@ -203,7 +198,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, formats, authors, organization (summary), languages, year, images, onlineUrls, urls, recordUrl, contributors. Use fields for uncommon items like nonPresenterAuthors.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, formats, authors, organization (summary), languages, year, images, onlineUrls, urls, recordUrl, contributors. Use get_record for full organizations list.',
           },
           sampleLimit: {
             type: 'number',
@@ -236,6 +231,16 @@ const ListToolsResponse = {
             type: 'boolean',
             description:
               'Include raw source metadata (large/noisy). Use only when needed.',
+          },
+          includeResources: {
+            type: 'boolean',
+            description:
+              'Include a compact list of external resources (capped).',
+          },
+          resourcesLimit: {
+            type: 'number',
+            description:
+              'Max number of resources to list per record (1-10).',
           },
           sampleLimit: {
             type: 'number',
@@ -273,23 +278,6 @@ const ListToolsResponse = {
               'If true, return only top-level organizations (no children) with minimal fields.',
           },
         },
-      },
-    },
-    {
-      name: 'extract_resources',
-      description: 'Return external resources related to records.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          ids: { type: 'array', items: { type: 'string' }, description: 'Record ID(s)' },
-          lng: { type: 'string', description: 'Language code (e.g., "fi", "sv", "en")' },
-          sampleLimit: {
-            type: 'number',
-            description:
-              'Max number of example resource links per record.',
-          },
-        },
-        required: ['ids'],
       },
     },
     {
@@ -366,8 +354,6 @@ export default {
             return await handleGetRecord(env, args);
           case 'list_organizations':
             return await handleListOrganizations(env, args);
-          case 'extract_resources':
-            return await handleExtractResources(env, args);
           case 'help':
             return json({ result: buildHelpPayload() });
         }
@@ -497,6 +483,34 @@ function summarizeOrganizations(record: Record<string, unknown>): Record<string,
   return {
     ...rest,
     organization: summary,
+  };
+}
+
+function appendResourcesList(record: Record<string, unknown>, limit: number): Record<string, unknown> {
+  if (!record || typeof record !== 'object') {
+    return record;
+  }
+  const extracted = extractResourcesFromRecord(record, limit);
+  if (!Array.isArray(extracted.resources) || extracted.resources.length === 0) {
+    return record;
+  }
+  const total = Object.values(extracted.resourceCounts ?? {}).reduce(
+    (sum, count) => sum + (typeof count === 'number' ? count : 0),
+    0,
+  );
+  const listed = extracted.resources.length;
+  const summary =
+    total > listed
+      ? {
+          listed,
+          total,
+          note: 'Listing a subset of resources. See recordUrl for the full list.',
+        }
+      : undefined;
+  return {
+    ...record,
+    resources: extracted.resources,
+    ...(summary ? { resourcesSummary: summary } : {}),
   };
 }
 
@@ -664,7 +678,16 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const { ids, lng, fields, fields_preset, includeRawData, sampleLimit } = parsed.data;
+  const {
+    ids,
+    lng,
+    fields,
+    fields_preset,
+    includeRawData,
+    includeResources,
+    resourcesLimit,
+    sampleLimit,
+  } = parsed.data;
   const selectedFields = fields ? [...fields] : resolveGetRecordFieldsPreset(fields_preset);
   const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
   if (includeRawData) {
@@ -689,10 +712,13 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
       ),
     ),
   );
+  const withResources = includeResources
+    ? enriched.map((record) => appendResourcesList(record, resourcesLimit ?? 10))
+    : enriched;
   const cleaned =
     outputFields && !outputFields.includes('recordUrl')
-      ? enriched.map((record) => stripRecordUrl(record))
-      : enriched;
+      ? withResources.map((record) => stripRecordUrl(record))
+      : withResources;
 
   return json({
     result: {
@@ -1216,6 +1242,41 @@ Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
 - \`0/Journal/\` — Journals / periodicals
 - \`0/PhysicalObject/\` — Physical objects
 - \`0/MusicalScore/\` — Musical scores
+
+## Record Field Descriptions
+
+Note that metadata varies between records and formats.
+
+### People/Organizations
+- **authors.primary** - Main creators (book author, photographer, composer)
+- **authors.secondary** - Supporting creators (translator, editor, illustrator)
+  - Includes role information: "translator", "kuvittaja" (illustrator)
+- **authors.corporate** - Institutional authors (publishers, organizations)
+- **contributors** - Additional people involved (rare, format-specific)
+- ❌ **nonPresenterAuthors** - Advanced field, rarely needed
+
+### Content
+- **title** - Main title of the work
+- **summary** - Description or abstract (array, may have multiple entries)
+- **subjects** - Topic keywords and classifications
+- **genres** - Content type (fiction, documentary, etc.)
+
+### Publication
+- **year** - Publication/creation year (string)
+- **humanReadablePublicationDates** - Formatted date strings
+- **publishers** - Publishing organization(s)
+- **series** - Series name if part of a collection
+
+### Physical/Technical
+- **format** - Material type hierarchy (e.g., ["0/Book/", "1/Book/eBook/"])
+- **measurements** - Size, duration, dimensions (format-specific)
+- **languages** - ISO language codes (e.g., ["fin", "swe"])
+
+### Access
+- **organizations** - Holding institutions
+- **recordUrl** - Link to full Finna record
+- **onlineUrls** - Direct access to digital content
+- **images** - Thumbnail/preview images
 
 ## More information
 - Finna overview: \`https://finna.fi/Content/about_finnafi\`
@@ -1780,27 +1841,6 @@ function extractBuildingValueFromHref(href: string): string | null {
   return null;
 }
 
-async function handleExtractResources(env: Env, args: unknown): Promise<Response> {
-  const parsed = ExtractResourcesArgs.safeParse(args);
-  if (!parsed.success) {
-    return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
-  }
-  const { ids, lng, sampleLimit } = parsed.data;
-  const url = buildRecordUrl({
-    apiBase: env.FINNA_API_BASE,
-    ids,
-    lng,
-    fields: ['id', 'images', 'onlineUrls', 'urls'],
-  });
-  const payload = await fetchJson(url);
-  const records = getRecords(payload);
-  const resources = records.map((record) =>
-    extractResourcesFromRecord(record, sampleLimit ?? 5),
-  );
-
-  return json({ result: { resources } });
-}
-
 async function fetchJson(url: string): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
     method: 'GET',
@@ -2245,10 +2285,6 @@ function summarizeToolResult(name: ToolName, result: Record<string, unknown> | n
             : 0;
       return `list_organizations: ${count} organization(s)`;
     }
-    case 'extract_resources': {
-      const resources = asArray(result.resources);
-      return `extract_resources: ${resources ? resources.length : 0} record(s)`;
-    }
     case 'help': {
       return 'help: ok';
     }
@@ -2288,8 +2324,6 @@ async function dispatchTool(
       return await unwrapResult(handleGetRecord(env, args));
     case 'list_organizations':
       return await unwrapResult(handleListOrganizations(env, args));
-    case 'extract_resources':
-      return await unwrapResult(handleExtractResources(env, args));
     case 'help':
       return buildHelpPayload();
   }
