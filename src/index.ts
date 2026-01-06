@@ -71,7 +71,7 @@ const ADVANCED_OPERATOR_OPTIONS = ['AND', 'OR'] as const;
 const FIELD_PRESET_OPTIONS = ['compact', 'media', 'full'] as const;
 
 const SearchRecordsArgs = z.object({
-  lookfor: z.string().default(''),
+  query: z.string().default(''),
   type: z.string().default('AllFields'),
   search_mode: z.enum(SEARCH_MODE_OPTIONS).optional(),
   advanced_operator: z.enum(ADVANCED_OPERATOR_OPTIONS).optional(),
@@ -82,7 +82,7 @@ const SearchRecordsArgs = z.object({
   lng: z.string().optional(),
   available_online: z.boolean().optional(),
   usage_rights: z.union([z.string(), z.array(z.string())]).optional(),
-  content_type: z.union([z.string(), z.array(z.string())]).optional(),
+  format: z.union([z.string(), z.array(z.string())]).optional(),
   organization: z.union([z.string(), z.array(z.string())]).optional(),
   language: z.union([z.string(), z.array(z.string())]).optional(),
   year: z.union([z.string(), z.array(z.string())]).optional(),
@@ -103,7 +103,7 @@ const GetRecordArgs = z.object({
 });
 
 const ListOrganizationsArgs = z.object({
-  lookfor: z.string().default(''),
+  query: z.string().default(''),
   type: z.string().default('AllFields'),
   lng: z.string().optional(),
   filters: FilterSchema,
@@ -127,7 +127,7 @@ const ListToolsResponse = {
       inputSchema: {
         type: 'object',
         properties: {
-          lookfor: {
+          query: {
             type: 'string',
             description:
               'Search keywords over metadata (Solr behind the scenes). Use short keywords, not long sentences. Not a full-text search. For multi-term OR/AND, use search_mode="advanced".',
@@ -153,7 +153,7 @@ const ListToolsResponse = {
             description:
               'Sort options: "relevance" (default), "newest" (recently added to Finna), "oldest" (earliest added), "year_newest" (newest publication/creation year), "year_oldest" (oldest year).',
           },
-          lng: { type: 'string' },
+          lng: { type: 'string', description: 'Language code (e.g., "fi", "sv", "en")' },
           available_online: {
             type: 'boolean',
             description:
@@ -165,34 +165,34 @@ const ListToolsResponse = {
             description:
               'Usage rights codes (usage_A..usage_F). usage_A=Free use, usage_B=Derivatives+commercial, usage_C=No derivatives+commercial, usage_D=Derivatives+non-commercial, usage_E=No derivatives+non-commercial, usage_F=Permission required/unknown.',
           },
-          content_type: {
+          format: {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Content types (format IDs). Maps to format. Examples: "0/Book/", "0/Book/eBook/", "0/Image/"',
+              'Content types (format IDs). Examples: "0/Book/", "0/Book/eBook/", "0/Image/"',
           },
           organization: {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Organizations/buildings (IDs from list_organizations). Maps to building.',
+              'Organizations (IDs from list_organizations).'
           },
           language: {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Language codes (e.g., "fin", "swe", "eng"). Maps to language.',
+              'Language (e.g., "fin", "swe", "eng")',
           },
           year: {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Publication/creation year or range (e.g., "2026" or "2020-2025"). Maps to main_date_str.',
+              'Publication/creation year or range (e.g., "2026" or "2020-2025").',
           },
           filters: {
             type: 'object',
             description:
-              'Structured filters: {include:{field:[values]}, any:{field:[values]}, exclude:{field:[values]}}. For building/library, use list_organizations value strings in include.building. Example for books: include.format=["0/Book/"]. Use exclude.format=[...] to drop formats.',
+              'Structured filters: {include:{field:[values]}, any:{field:[values]}, exclude:{field:[values]}}. For organizations, use list_organizations value strings in include.organization. Example for books: include.format=["0/Book/"]. Use exclude.format=[...] to drop formats. Note that filter values are case sensitive need to match exactly to those used by Finna.',
           },
           facets: {
             type: 'array',
@@ -256,11 +256,11 @@ const ListToolsResponse = {
     {
       name: 'list_organizations',
       description:
-        'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use only the returned value strings in search_records filters.include.building (path labels are for display, not filtering). Unfiltered results return only the top 2 levels with meta.pruned=true; use lookfor/filters for deeper levels.',
+        'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use only the returned value strings in search_records filters.include.organization (path labels are for display, not filtering). Unfiltered results return only the top 2 levels with meta.pruned=true; use query/filters for deeper levels.',
       inputSchema: {
         type: 'object',
         properties: {
-          lookfor: { type: 'string' },
+          query: { type: 'string' },
           type: { type: 'string' },
           lng: { type: 'string', description: 'Language code (e.g., "fi", "sv", "en")' },
           filters: { type: 'object' },
@@ -302,7 +302,7 @@ const ListToolsResponse = {
     {
       name: 'help',
       description:
-        'Show a compact help guide for filters, formats, and common usage patterns.',
+        'Show a help guide about Finna.fi, search filters, formats, and common usage patterns.',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -500,7 +500,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
   const {
-    lookfor,
+    query,
     type,
     search_mode,
     advanced_operator,
@@ -511,7 +511,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     lng,
     available_online,
     usage_rights,
-    content_type,
+    format,
     organization,
     language,
     year,
@@ -525,7 +525,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   normalizedFilters = mergeTopLevelFilters(normalizedFilters, {
     available_online,
     usage_rights,
-    content_type,
+    format,
     organization,
     language,
     year,
@@ -542,7 +542,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
 
   const url = buildSearchUrl({
     apiBase: env.FINNA_API_BASE,
-    lookfor,
+    lookfor: query,
     type,
     searchMode: search_mode,
     advancedOperator: advanced_operator,
@@ -572,7 +572,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
       ? enriched.map((record) => stripRecordUrl(record))
       : enriched;
   const meta = buildSearchMeta({
-    lookfor,
+    query,
     search_mode,
     fields_preset,
     fields,
@@ -637,7 +637,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const { lookfor, type, lng, filters, max_depth, include_paths, compact } = parsed.data;
+  const { query, type, lng, filters, max_depth, include_paths, compact } = parsed.data;
   const normalizedFilters = normalizeFilters(filters);
   const cacheLng = lng ?? 'fi';
   const cacheKey = buildOrganizationsCacheKey(cacheLng, type);
@@ -646,7 +646,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
       ? null
       : await readOrganizationsCache(env, cacheKey);
   if (cached) {
-    if (!lookfor && !normalizedFilters) {
+    if (!query && !normalizedFilters) {
       const depth = max_depth ?? 2;
       return json({
         result: finalizeOrganizations(
@@ -662,7 +662,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
         ),
       });
     }
-    const filtered = filterOrganizationsPayload(cached, lookfor, normalizedFilters);
+    const filtered = filterOrganizationsPayload(cached, query, normalizedFilters);
     if (filtered) {
       return json({
         result: finalizeOrganizations(
@@ -673,14 +673,14 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
     }
   }
   const uiPayload = await fetchUiOrganizations(cacheLng, type, env.FINNA_UI_BASE);
-  const filtered = filterOrganizationsPayload(uiPayload, lookfor, normalizedFilters);
+  const filtered = filterOrganizationsPayload(uiPayload, query, normalizedFilters);
   if (env.FINNA_MCP_DISABLE_CACHE !== '1') {
     await writeOrganizationsCache(env, cacheKey, uiPayload);
   }
   let result = filtered ?? uiPayload;
   if (max_depth) {
     result = pruneOrganizationsDepth(result, max_depth, 'max_depth');
-  } else if (!lookfor && !normalizedFilters) {
+  } else if (!query && !normalizedFilters) {
     result = pruneOrganizationsDepth(result, 2, 'unfiltered');
   }
   result = compactOrganizations(result, compact);
@@ -755,9 +755,10 @@ function mergeTopLevelFilters(
   options: {
     available_online?: boolean;
     usage_rights?: string | string[];
-    content_type?: string | string[];
+    format?: string | string[];
     organization?: string | string[];
     language?: string | string[];
+    year?: string | string[];
   },
 ): FilterInput | undefined {
   const merged: FilterInput = filters ? { ...filters } : {};
@@ -773,8 +774,8 @@ function mergeTopLevelFilters(
       coerceStringArray(options.usage_rights),
     );
   }
-  if (options.content_type) {
-    addFilterValues(merged.include, 'format', coerceStringArray(options.content_type));
+  if (options.format) {
+    addFilterValues(merged.include, 'format', coerceStringArray(options.format));
   }
   if (options.organization) {
     addFilterValues(merged.include, 'building', coerceStringArray(options.organization));
@@ -839,6 +840,12 @@ function normalizeFilterBucket(
 function mapFilterField(field: string): string {
   if (field === 'building_str_mv') {
     return 'building';
+  }
+  if (field === 'organization') {
+    return 'building';
+  }
+  if (field === 'content_type') {
+    return 'format';
   }
   if (field === 'year') {
     return 'main_date_str';
@@ -1005,13 +1012,61 @@ Finna.fi is a unified search across Finnish libraries, archives, and museums. It
 Note that this MCP server is not an official Finna service.
 More info: \`https://github.com/samuli/finna-mcp\`
 
-## Filter helpers (recommended)
-- \`available_online\` → (only items available online)
-- \`usage_rights\` → \`usage_rights_str_mv\` (online materials only)
-- \`content_type\` → \`format\`
-- \`organization\` → \`building\`
-- \`language\` → \`language\`
-- \`year\` → \`main_date_str\` (supports ranges like \`1920-1980\`)
+## Usage examples
+1) Online images from an organization
+\`\`\`json
+{"available_online": true, "format": "0/Image/", "organization": ["0/Helmet/"], "limit": 10}
+\`\`\`
+
+2) Books published in 2020–2025
+\`\`\`json
+{"format": "0/Book/", "year": "2020-2025", "limit": 10}
+\`\`\`
+
+3) Free-use online material
+\`\`\`json
+{"available_online": true, "usage_rights": ["usage_A"], "limit": 10}
+\`\`\`
+
+4) Recent additions from a library system
+\`\`\`json
+{"organization": ["0/Helmet/"], "sort": "newest", "limit": 10}
+\`\`\`
+
+5) Discover organization IDs
+\`\`\`json
+{"query": "Helsinki", "include_paths": true}
+\`\`\`
+
+6) Finnish + Swedish materials
+\`\`\`json
+{"language": ["fin", "swe"], "limit": 10}
+\`\`\`
+
+7) Restrict to a specific library consortium (Satakirjastot)
+\`\`\`json
+{"organization": ["0/SATAKIRJASTOT/"], "format": "0/Book/", "limit": 10}
+\`\`\`
+
+8) Restrict to a museum organization (Helsinki City Museum)
+\`\`\`json
+{"organization": ["0/HKM/"], "format": "0/Image/", "available_online": true, "limit": 10}
+\`\`\`
+
+9) Old photos of Helsinki (online + photos + year range)
+\`\`\`json
+{"available_online": true, "format": "0/Image/", "query": "Helsinki", "year": "1900-1950", "limit": 10}
+\`\`\`
+
+10) Online videos (any topic)
+\`\`\`json
+{"available_online": true, "format": "0/Video/", "limit": 10}
+\`\`\`
+
+11) New in Finna (recently added)
+\`\`\`json
+{"filters": {"include": {"first_indexed": ["[NOW-1MONTHS/DAY TO *]"]}}, "sort": "newest", "limit": 10}
+\`\`\`
 
 ### Usage rights filter codes
 - \`usage_A\` = Free use
@@ -1034,62 +1089,6 @@ Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
 - \`0/Journal/\` — Journals / periodicals
 - \`0/PhysicalObject/\` — Physical objects
 - \`0/MusicalScore/\` — Musical scores
-
-## Usage examples
-1) Online images from an organization
-\`\`\`json
-{"available_online": true, "content_type": "0/Image/", "organization": ["0/Helmet/"], "limit": 10}
-\`\`\`
-
-2) Books published in 2020–2025
-\`\`\`json
-{"content_type": "0/Book/", "year": "2020-2025", "limit": 10}
-\`\`\`
-
-3) Free-use online material
-\`\`\`json
-{"available_online": true, "usage_rights": ["usage_A"], "limit": 10}
-\`\`\`
-
-4) Recent additions from a library system
-\`\`\`json
-{"organization": ["0/Helmet/"], "sort": "newest", "limit": 10}
-\`\`\`
-
-5) Discover organization IDs
-\`\`\`json
-{"lookfor": "Helsinki", "include_paths": true}
-\`\`\`
-
-6) Finnish + Swedish materials
-\`\`\`json
-{"language": ["fin", "swe"], "limit": 10}
-\`\`\`
-
-7) Restrict to a specific library consortium (Satakirjastot)
-\`\`\`json
-{"organization": ["0/SATAKIRJASTOT/"], "content_type": "0/Book/", "limit": 10}
-\`\`\`
-
-8) Restrict to a museum organization (Helsinki City Museum)
-\`\`\`json
-{"organization": ["0/HKM/"], "content_type": "0/Image/", "available_online": true, "limit": 10}
-\`\`\`
-
-9) Old photos of Helsinki (online + photos + year range)
-\`\`\`json
-{"available_online": true, "content_type": "0/Image/", "lookfor": "Helsinki", "year": "1900-1950", "limit": 10}
-\`\`\`
-
-10) Online videos (any topic)
-\`\`\`json
-{"available_online": true, "content_type": "0/Video/", "limit": 10}
-\`\`\`
-
-11) New in Finna (recently added)
-\`\`\`json
-{"filters": {"include": {"first_indexed": ["[NOW-1MONTHS/DAY TO *]"]}}, "sort": "newest", "limit": 10}
-\`\`\`
 
 ## More information
 - Finna overview: \`https://finna.fi/Content/about_finnafi\`
@@ -1184,7 +1183,7 @@ async function writeOrganizationsCache(
 
 function filterOrganizationsPayload(
   payload: Record<string, unknown>,
-  lookfor: string,
+  query: string,
   filters?: FilterInput,
 ): Record<string, unknown> | null {
   const facets = payload.facets as Record<string, unknown> | undefined;
@@ -1192,7 +1191,7 @@ function filterOrganizationsPayload(
   if (!Array.isArray(entries)) {
     return null;
   }
-  if (!filters && !lookfor) {
+  if (!filters && !query) {
     return payload;
   }
 
@@ -1208,8 +1207,8 @@ function filterOrganizationsPayload(
   }
 
   let result = entries.slice();
-  const query = lookfor.toLowerCase().trim();
-  const variants = query ? buildLookforVariants(query) : [];
+  const normalizedQuery = query.toLowerCase().trim();
+  const variants = normalizedQuery ? buildLookforVariants(normalizedQuery) : [];
   const includeValues = new Set(filters?.include?.building ?? []);
   const anyValues = new Set(filters?.any?.building ?? []);
   const excludeValues = new Set(filters?.exclude?.building ?? []);
@@ -1739,8 +1738,8 @@ function stripRecordUrl(record: Record<string, unknown>): Record<string, unknown
   return rest;
 }
 
-function looksMultiTerm(lookfor: string): boolean {
-  const trimmed = lookfor.trim();
+function looksMultiTerm(query: string): boolean {
+  const trimmed = query.trim();
   if (!trimmed) {
     return false;
   }
@@ -1749,7 +1748,7 @@ function looksMultiTerm(lookfor: string): boolean {
 }
 
 function buildSearchMeta(options: {
-  lookfor: string;
+  query: string;
   search_mode?: string;
   fields_preset?: string;
   fields?: string[] | null;
@@ -1763,7 +1762,7 @@ function buildSearchMeta(options: {
   const warnings: string[] = [];
   const info: string[] = [];
   const {
-    lookfor,
+    query,
     search_mode,
     fields_preset,
     fields,
@@ -1787,12 +1786,12 @@ function buildSearchMeta(options: {
     );
   });
 
-  if (search_mode !== 'advanced' && looksMultiTerm(lookfor)) {
+  if (search_mode !== 'advanced' && looksMultiTerm(query)) {
     warnings.push(
-      'Multi-term lookfor detected; consider search_mode="advanced" with advanced_operator="AND" for better precision.',
+      'Multi-term query detected; consider search_mode="advanced" with advanced_operator="AND" for better precision.',
     );
   }
-  if (search_mode === 'advanced' && !looksMultiTerm(lookfor)) {
+  if (search_mode === 'advanced' && !looksMultiTerm(query)) {
     info.push('Advanced search used with a single term; simple mode may be faster.');
   }
   if (fields_preset && fields && fields.length > 0) {
@@ -1800,7 +1799,7 @@ function buildSearchMeta(options: {
   }
   if (typeof resultCount === 'number' && resultCount === 0) {
     warnings.push(
-      'No results. Consider search_mode="advanced", loosening filters, or trying a shorter lookfor.',
+      'No results. Consider search_mode="advanced", loosening filters, or trying a shorter query.',
     );
   }
   if (typeof resultCount === 'number' && limit && resultCount > limit * 100) {
@@ -1861,7 +1860,7 @@ async function handleJsonRpc(
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
         instructions:
-          'Finna MCP server: a unified search across Finnish libraries, archives, and museums. Use search_records for items, list_organizations for organization IDs, and get_record for details. Prefer top-level helpers (available_online, usage_rights, content_type, organization, language, year) before raw filters.',
+          'Finna MCP server: a unified search across Finnish libraries, archives, and museums. Use search_records for items, list_organizations for organization IDs, and get_record for details. Prefer top-level helpers (available_online, usage_rights, format, organization, language, year) before raw filters.',
       }),
     );
   }

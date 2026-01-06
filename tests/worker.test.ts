@@ -53,7 +53,7 @@ describe('worker', () => {
         method: 'tools/call',
         params: {
           name: 'search_records',
-          arguments: { lookfor: 'example', limit: 1 },
+          arguments: { query: 'example', limit: 1 },
         },
       }),
     });
@@ -88,7 +88,7 @@ describe('worker', () => {
         method: 'tools/call',
         params: {
           name: 'search_records',
-          arguments: { lookfor: 'example', limit: 1 },
+          arguments: { query: 'example', limit: 1 },
         },
       }),
     });
@@ -127,12 +127,12 @@ describe('worker', () => {
         params: {
           name: 'search_records',
           arguments: {
-            lookfor: 'sibelius',
+            query: 'sibelius',
             sort: 'newest_first',
             filters: {
-              include: { building: ['1/KANSA/'] },
+              include: { organization: ['1/KANSA/'] },
               any: { format: ['0/Image/', '1/Image/Photo/'] },
-              exclude: { building: ['1/TEST/'] },
+              exclude: { organization: ['1/TEST/'] },
             },
           },
         },
@@ -177,8 +177,8 @@ describe('worker', () => {
         params: {
           name: 'search_records',
           arguments: {
-            lookfor: '*',
-            filters: { building: '0/URHEILUMUSEO/', format: 'Book' },
+            query: '*',
+            filters: { organization: '0/URHEILUMUSEO/', format: 'Book' },
             limit: 0,
           },
         },
@@ -209,7 +209,7 @@ describe('worker', () => {
         params: {
           name: 'search_records',
           arguments: {
-            lookfor: 'deep learning algorithm',
+            query: 'deep learning algorithm',
             search_mode: 'advanced',
             advanced_operator: 'OR',
             limit: 5,
@@ -245,8 +245,8 @@ describe('worker', () => {
         params: {
           name: 'search_records',
           arguments: {
-            lookfor: '',
-            filters: { include: { building: ['Helmet', '0%2FHelmet%2F'] } },
+            query: '',
+            filters: { include: { organization: ['Helmet', '0%2FHelmet%2F'] } },
             limit: 0,
           },
         },
@@ -275,8 +275,8 @@ describe('worker', () => {
         params: {
           name: 'search_records',
           arguments: {
-            lookfor: '',
-            filters: { include: { building: ['0%2FHelmet%2F'] } },
+            query: '',
+            filters: { include: { organization: ['0%2FHelmet%2F'] } },
             limit: 0,
           },
         },
@@ -309,7 +309,7 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'search_records',
-          arguments: { lookfor: '*', facets: ['format'] },
+          arguments: { query: '*', facets: ['format'] },
         },
       }),
     });
@@ -336,10 +336,10 @@ describe('worker', () => {
         params: {
           name: 'search_records',
           arguments: {
-            lookfor: '',
+            query: '',
             available_online: true,
             usage_rights: ['usage_A'],
-            content_type: '0/Book/',
+            format: '0/Book/',
             organization: ['0/Helmet/'],
             language: 'fin',
             year: '2020-2025',
@@ -394,7 +394,7 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'list_organizations',
-          arguments: { lookfor: '', filters: { building: ['1/KANSA/'] } },
+          arguments: { query: '', filters: { organization: ['1/KANSA/'] } },
         },
       }),
     });
@@ -557,7 +557,7 @@ describe('worker', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         method: 'callTool',
-        params: { name: 'list_organizations', arguments: { lookfor: 'Seinäjoki' } },
+        params: { name: 'list_organizations', arguments: { query: 'Seinäjoki' } },
       }),
     });
 
@@ -634,7 +634,7 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'list_organizations',
-          arguments: { lookfor: 'Seinäjoki', include_paths: true },
+          arguments: { query: 'Seinäjoki', include_paths: true },
         },
       }),
     });
@@ -706,7 +706,7 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'list_organizations',
-          arguments: { lookfor: 'Eepos', compact: true },
+          arguments: { query: 'Eepos', compact: true },
         },
       }),
     });

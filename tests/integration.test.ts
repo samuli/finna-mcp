@@ -47,7 +47,7 @@ suite('integration (local wrangler)', () => {
         params: {
           name: 'search_records',
           arguments: {
-            lookfor: 'sibelius',
+            query: 'sibelius',
             filters: {
               any: { format: ['0/Image/', '1/Image/Photo/'] },
             },
@@ -74,7 +74,7 @@ suite('integration (local wrangler)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         method: 'callTool',
-        params: { name: 'search_records', arguments: { lookfor: 'kansalliskirjasto', limit: 1 } },
+        params: { name: 'search_records', arguments: { query: 'kansalliskirjasto', limit: 1 } },
       }),
     });
     expect(searchResponse.ok).toBe(true);
@@ -120,7 +120,7 @@ suite('integration (local wrangler)', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           method: 'callTool',
-          params: { name: 'list_organizations', arguments: { lookfor: 'sibelius' } },
+          params: { name: 'list_organizations', arguments: { query: 'sibelius' } },
         }),
       });
       expect(response.ok).toBe(true);
@@ -131,18 +131,18 @@ suite('integration (local wrangler)', () => {
   );
 
   it(
-    'list_organizations filters by lookfor',
+    'list_organizations filters by query',
     async () => {
       if (!available) {
         return;
       }
-      const lookfor = 'Seinäjoki';
+      const query = 'Seinäjoki';
       const response = await fetch(baseUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           method: 'callTool',
-          params: { name: 'list_organizations', arguments: { lookfor, lng: 'fi' } },
+          params: { name: 'list_organizations', arguments: { query, lng: 'fi' } },
         }),
       });
       expect(response.ok).toBe(true);
@@ -151,11 +151,11 @@ suite('integration (local wrangler)', () => {
       if (!Array.isArray(entries) || entries.length === 0) {
         return;
       }
-      const query = lookfor.toLowerCase();
+      const needle = query.toLowerCase();
       for (const entry of entries) {
         const value = String(entry?.value ?? '').toLowerCase();
         const translated = String(entry?.translated ?? '').toLowerCase();
-        expect(value.includes(query) || translated.includes(query)).toBe(true);
+        expect(value.includes(needle) || translated.includes(needle)).toBe(true);
       }
     },
     15000,
@@ -172,7 +172,7 @@ suite('integration (local wrangler)', () => {
         params: {
           name: 'search_records',
           arguments: {
-            lookfor: '',
+            query: '',
             limit: 0,
             filters: {
               include: { format: ['0/Book/'] },
@@ -185,10 +185,10 @@ suite('integration (local wrangler)', () => {
         params: {
           name: 'search_records',
           arguments: {
-            lookfor: '',
+            query: '',
             limit: 0,
             filters: {
-              include: { format: ['0/Book/'], building: ['0/Helmet'] },
+              include: { format: ['0/Book/'], organization: ['0/Helmet'] },
             },
           },
         },
