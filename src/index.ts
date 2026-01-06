@@ -88,7 +88,6 @@ const SearchRecordsArgs = z.object({
   year: z.union([z.string(), z.array(z.string())]).optional(),
   filters: FilterSchema,
   facets: z.array(z.string()).optional(),
-  facetFilters: z.array(z.string()).optional(),
   fields: z.array(z.string()).optional(),
   sampleLimit: z.number().int().min(1).max(5).optional(),
 });
@@ -198,13 +197,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-            'Facets to return (e.g., ["building", "format"]). If empty or omitted, no facets are returned. Note that facets (especially building) often returns lots of data. Use facetFilters to limit.'
-          },
-          facetFilters: {
-            type: 'array',
-            items: { type: 'string' },
-            description:
-              'Facet bucket filter only (does not filter records). Finna facet filter syntax, e.g. ["building:\\"0/URHEILUMUSEO/\\"", "format:\\"0/Book/\\""].',
+            'Facets to return (e.g., ["building", "format"]). If empty or omitted, no facets are returned. Note that facets (especially building) often returns lots of data.'
           },
           fields: {
             type: 'array',
@@ -587,7 +580,6 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     year,
     filters,
     facets,
-    facetFilters,
     fields,
     sampleLimit,
   } = parsed.data;
@@ -623,7 +615,6 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     lng,
     filters: normalizedFilters,
     facets,
-    facetFilters,
     fields: apiFields,
   });
 
