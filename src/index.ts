@@ -2063,20 +2063,11 @@ function buildContentWrapper(
   summary: string,
   result: Record<string, unknown>,
 ): Record<string, unknown> {
-  const meta = asObject(result.meta);
-  const warning =
-    meta && typeof meta.warning === 'string' ? meta.warning : undefined;
-  const info = meta && typeof meta.info === 'string' ? meta.info : undefined;
+  void name;
   const wrapper: Record<string, unknown> = {
     summary,
     response: result,
   };
-  if (warning) {
-    wrapper.warning = warning;
-  }
-  if (info) {
-    wrapper.info = info;
-  }
   return wrapper;
 }
 
