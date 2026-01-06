@@ -184,6 +184,13 @@ Use these in `filters.include.format` when narrowing by type:
 - Single-term query (`sibelius`) returns no `meta` warning.
 - Multi-term query (`deep learning algorithm`) returns `meta.warning` while `resultCount` remains unaffected.
 
+## Feature: Compact Organization Listing (2026-01-06)
+### Change
+- `list_organizations(compact=true)` returns only top-level orgs with `{value,label,count}` and no `children`.
+
+### Re-evaluation
+- `list_organizations(compact=true)` returns small payloads with no children and `meta.compact=true`.
+
 ## Users
 - TODO
 

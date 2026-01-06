@@ -86,6 +86,7 @@ const ListOrganizationsArgs = z.object({
   filters: FilterSchema,
   max_depth: z.number().int().min(1).max(6).optional(),
   include_paths: z.boolean().optional(),
+  compact: z.boolean().optional(),
 });
 
 const ExtractResourcesArgs = z.object({
@@ -188,6 +189,11 @@ const ListToolsResponse = {
             type: 'boolean',
             description:
               'If true, include a path label for each item (e.g., "Satakirjastot / Rauma / Rauman pääkirjasto").',
+          },
+          compact: {
+            type: 'boolean',
+            description:
+              'If true, return only top-level organizations (no children) with minimal fields.',
           },
         },
       },
@@ -443,7 +449,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const { lookfor, type, lng, filters, max_depth, include_paths } = parsed.data;
+  const { lookfor, type, lng, filters, max_depth, include_paths, compact } = parsed.data;
   const normalizedFilters = normalizeFilters(filters);
   const cacheLng = lng ?? 'fi';
   const cacheKey = buildOrganizationsCacheKey(cacheLng, type);
@@ -456,10 +462,13 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
       const depth = max_depth ?? 2;
       return json({
         result: finalizeOrganizations(
-          pruneOrganizationsDepth(
-            cached,
-            depth,
-            max_depth ? 'max_depth' : 'unfiltered',
+          compactOrganizations(
+            pruneOrganizationsDepth(
+              cached,
+              depth,
+              max_depth ? 'max_depth' : 'unfiltered',
+            ),
+            compact,
           ),
           include_paths,
         ),
@@ -467,7 +476,12 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
     }
     const filtered = filterOrganizationsPayload(cached, lookfor, normalizedFilters);
     if (filtered) {
-      return json({ result: finalizeOrganizations(filtered, include_paths) });
+      return json({
+        result: finalizeOrganizations(
+          compactOrganizations(filtered, compact),
+          include_paths,
+        ),
+      });
     }
   }
   const uiPayload = await fetchUiOrganizations(cacheLng, type, env.FINNA_UI_BASE);
@@ -481,6 +495,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   } else if (!lookfor && !normalizedFilters) {
     result = pruneOrganizationsDepth(result, 2, 'unfiltered');
   }
+  result = compactOrganizations(result, compact);
   return json({ result: finalizeOrganizations(result, include_paths) });
 }
 
@@ -780,6 +795,42 @@ function finalizeOrganizations(
     facets: {
       ...facets,
       building: enhanced,
+    },
+  };
+}
+
+function compactOrganizations(
+  payload: Record<string, unknown>,
+  compact?: boolean,
+): Record<string, unknown> {
+  if (!compact) {
+    return payload;
+  }
+  const facets = payload.facets as Record<string, unknown> | undefined;
+  const entries = facets?.building;
+  if (!Array.isArray(entries)) {
+    return payload;
+  }
+  const simplified = entries.map((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return entry;
+    }
+    const record = entry as Record<string, unknown>;
+    return {
+      value: record.value,
+      label: record.label ?? record.translated,
+      count: record.count,
+    };
+  });
+  return {
+    ...payload,
+    facets: {
+      ...facets,
+      building: simplified,
+    },
+    meta: {
+      ...(payload.meta as Record<string, unknown> | undefined),
+      compact: true,
     },
   };
 }

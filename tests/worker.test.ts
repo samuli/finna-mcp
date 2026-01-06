@@ -414,4 +414,62 @@ describe('worker', () => {
     expect(hasPath(tree)).toBe(true);
   });
 
+  it('list_organizations can return compact results', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    const fixture = JSON.stringify({
+      data: {
+        facets: {
+          building: {
+            html: `
+              <ul class="facet-tree">
+                <li class="facet-tree__parent">
+                  <span class="facet-tree__item-container">
+                    <span class="facet js-facet-item facetOR">
+                      <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%220%2FEepos%2F%22" data-title="Eepos-kirjastot" data-count="360571">
+                        <span class="facet-value icon-link__label">Eepos-kirjastot</span>
+                      </a>
+                    </span>
+                  </span>
+                  <ul>
+                    <li class="facet-tree__parent">
+                      <span class="facet-tree__item-container">
+                        <span class="facet js-facet-item facetOR">
+                          <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%221%2FEepos%2F19%2F%22" data-title="Seinäjoki" data-count="2947">
+                            <span class="facet-value icon-link__label">Seinäjoki</span>
+                          </a>
+                        </span>
+                      </span>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            `,
+          },
+        },
+      },
+    });
+    mockFetch.mockResolvedValueOnce(
+      new Response(fixture, { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: {
+          name: 'list_organizations',
+          arguments: { lookfor: 'Eepos', compact: true },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    const payload = await response.json();
+    const building = payload.result.facets.building[0];
+    expect(building.children).toBeUndefined();
+    expect(Object.keys(building).sort()).toEqual(['count', 'label', 'value']);
+    expect(payload.result.meta.compact).toBe(true);
+  });
+
 });
