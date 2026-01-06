@@ -148,6 +148,13 @@ Use these in `filters.include.format` when narrowing by type:
 - Add a holdings/availability tool (Finna holdings/JSON or per-org endpoints).
 - Provide an optional “compact” org list mode with top-level only + search hint.
 
+## Suggested Next Improvements (prioritized)
+1. **Auto-advanced hinting**: if `lookfor` contains multiple terms, return a `meta.warning` suggesting `search_mode="advanced"` with `advanced_operator="AND"`; do not auto-switch to preserve semantics.
+2. **Compact org list mode**: return only top-level orgs with counts + a `meta.hint` to use `lookfor` or `include_paths` for deeper nodes.
+3. **Field presets for get_record**: mirror `fields_preset` in `get_record` so models can request compact/media/full without remembering field names.
+4. **Add org “path” only on demand**: keep default lean; ensure `include_paths` is explicit (already implemented).
+5. **Holdings/availability path**: investigate non-session endpoints or per-org APIs before reintroducing a holdings tool.
+
 ## LLM UX Improvement Ideas (shortlist)
 - Add `fields_preset` for `search_records` so the model can request compact/media/full record shapes without memorizing field names.
 - Add `include_paths` for `list_organizations` to provide explicit org paths (e.g., “Satakirjastot / Rauma / Rauman pääkirjasto”).
