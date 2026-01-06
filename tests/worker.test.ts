@@ -349,7 +349,7 @@ describe('worker', () => {
             query: '',
             available_online: true,
             usage_rights: ['public_domain'],
-            format: '0/Book/',
+            format: ['0/Book/'],
             organization: ['0/Helmet/'],
             language: 'fin',
             year: '2020-2025',
@@ -364,7 +364,7 @@ describe('worker', () => {
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('filter%5B%5D=online_boolean%3A%221%22');
     expect(calledUrl).toContain('filter%5B%5D=usage_rights_str_mv%3A%22usage_A%22');
-    expect(calledUrl).toContain('filter%5B%5D=format%3A%220%2FBook%2F%22');
+    expect(calledUrl).toContain('filter%5B%5D=%7Eformat%3A%220%2FBook%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=building%3A%220%2FHelmet%2F%22');
     expect(calledUrl).toContain('filter%5B%5D=language%3A%22fin%22');
     expect(calledUrl).toContain(
@@ -801,7 +801,7 @@ describe('worker', () => {
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(typeof payload.result.markdown).toBe('string');
-    expect(payload.result.markdown).toContain('Finna MCP Help');
+    expect(payload.result.markdown).toContain('Usage examples');
   });
 
 });

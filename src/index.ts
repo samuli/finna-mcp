@@ -163,7 +163,7 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Content types (format IDs). Examples: "0/Book/", "0/Book/eBook/", "0/Image/"',
+              'Content types (format IDs). Use a string for one format, or an array for OR selection. Examples: "0/Book/", "0/Book/eBook/", ["0/Image/","0/Video/"]',
           },
           organization: {
             type: ['string', 'array'],
@@ -859,6 +859,7 @@ function mergeTopLevelFilters(
 ): FilterInput | undefined {
   const merged: FilterInput = filters ? { ...filters } : {};
   merged.include = merged.include ? { ...merged.include } : {};
+  merged.any = merged.any ? { ...merged.any } : {};
 
   if (options.available_online) {
     addFilterValues(merged.include, 'online_boolean', ['1']);
@@ -871,7 +872,9 @@ function mergeTopLevelFilters(
     );
   }
   if (options.format) {
-    addFilterValues(merged.include, 'format', coerceStringArray(options.format));
+    const values = coerceStringArray(options.format);
+    const target = Array.isArray(options.format) ? merged.any : merged.include;
+    addFilterValues(target, 'format', values);
   }
   if (options.organization) {
     addFilterValues(merged.include, 'building', coerceStringArray(options.organization));
@@ -1157,13 +1160,11 @@ function collectFacetValues(entries: unknown, acc: string[] = []): string[] {
 }
 
 function buildHelpPayload(): Record<string, unknown> {
-  const markdown = `# Finna MCP Help
+  const markdown = `# Finna.fi
 
-## MCP server for Finna.fi's cultural and scientific material in Finland.
 Finna.fi is a unified search across Finnish libraries, archives, and museums. It includes online items as well as material that may require on-site access.
 
-Note that this MCP server is not an official Finna service.
-More info: \`https://github.com/samuli/finna-mcp\`
+Note that this [MCP server](https://github.com/samuli/finna-mcp) is not an official Finna service.
 
 ## Usage examples
 1) Online images from an organization
@@ -1221,7 +1222,14 @@ More info: \`https://github.com/samuli/finna-mcp\`
 {"filters": {"include": {"first_indexed": ["[NOW-1MONTHS/DAY TO *]"]}}, "sort": "newest", "limit": 10}
 \`\`\`
 
+## Usage rights options
+
+The rights to use digital images and other material found on the Finna.fi search service varies. Always check the information on usage rights of the material and observe the terms. Read the instructions below to find out what the different rights of use on Finna are and how you can use the material.
+
+The usage rights of materials descriptions and cover images of library materials are separately described [https://finna.fi/Content/terms](on this page).
+
 ### Usage rights options
+
 - \`public_domain\` — Free use, no restrictions
 - \`open\` — Commercial use + derivatives allowed
 - \`commercial_noderivatives\` — Commercial use ok, no modifications
@@ -1283,6 +1291,7 @@ Note that metadata varies between records and formats.
 - About Finna: \`https://finna.fi/Content/about\`
 - Participating organizations: \`https://finna.fi/Content/organisations\`
 - More about Finna: \`https://finna.fi/Content/moreabout_finna\`
+- More about usage rights: \'https://finna.fi/Content/terms\'
 `;
 
   return { markdown };
