@@ -350,6 +350,13 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   const normalizedFilters = normalizeFilters(filters);
   const normalizedSort = normalizeSort(sort);
   const selectedFields = fields ?? resolveSearchFieldsPreset(fields_preset);
+  const maybeAdvancedHint =
+    search_mode !== 'advanced' && looksMultiTerm(lookfor)
+      ? {
+          warning:
+            'Multi-term lookfor detected; consider search_mode="advanced" with advanced_operator="AND" for better precision.',
+        }
+      : null;
 
   const url = buildSearchUrl({
     apiBase: env.FINNA_API_BASE,
@@ -387,6 +394,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     result: {
       ...stripFacetsIfUnused(payload, facets),
       records: cleaned,
+      ...(maybeAdvancedHint ? { meta: maybeAdvancedHint } : {}),
     },
   });
 }
@@ -1192,6 +1200,15 @@ function stripRecordUrl(record: Record<string, unknown>): Record<string, unknown
   }
   const { recordUrl: _omit, ...rest } = record;
   return rest;
+}
+
+function looksMultiTerm(lookfor: string): boolean {
+  const trimmed = lookfor.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const unquoted = trimmed.replace(/"[^"]+"/g, '').trim();
+  return /\s/.test(unquoted);
 }
 
 type JsonRpcRequest = {

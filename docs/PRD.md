@@ -176,6 +176,14 @@ Use these in `filters.include.format` when narrowing by type:
   - `Satakunnan ammattikorkeakoulu / Rauma`
   - `Turun yliopisto / Rauman normaalikoulun kirjasto, vain Rauman oppilaille`
 
+## Feature: Auto-advanced Hinting (2026-01-06)
+### Change
+- When `lookfor` contains multiple terms and `search_mode` is not `advanced`, `search_records` returns `meta.warning` suggesting advanced mode.
+
+### Re-evaluation
+- Single-term query (`sibelius`) returns no `meta` warning.
+- Multi-term query (`deep learning algorithm`) returns `meta.warning` while `resultCount` remains unaffected.
+
 ## Users
 - TODO
 
