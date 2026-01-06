@@ -109,11 +109,15 @@ const ListToolsResponse = {
     {
       name: 'search_records',
       description:
-        'Search Finna records with LLM-friendly structured filters. Do not use for libraries/organizations; use list_organizations instead. lookfor uses Solr/Lucene-style query syntax over limited metadata fields; use lookfor="" or "*" when you only need counts by filters. To count records, set limit=0 and read resultCount. For books: use filters.include.format=["0/Book/"] (format codes) and a building filter from list_organizations. Sort options: "relevance" (default), "newest" (recently added to Finna), "oldest" (earliest added), "year_newest" (newest publication/creation year), "year_oldest" (oldest year). For multi-term queries, set search_mode="advanced" with advanced_operator="AND" or "OR".',
+      'Search and retrieve metadata over records in Finna. Do not use for libraries/organizations; use list_organizations instead.',
       inputSchema: {
         type: 'object',
         properties: {
-          lookfor: { type: 'string' },
+          lookfor: {
+            type: 'string',
+            description:
+              'Search keywords over metadata (Solr behind the scenes). Use short keywords, not long sentences. Not a full-text search. For multi-term OR/AND, use search_mode="advanced".',
+          },
           type: { type: 'string' },
           search_mode: {
             type: 'string',
@@ -126,10 +130,10 @@ const ListToolsResponse = {
           fields_preset: {
             type: 'string',
             description:
-              'Field preset: "compact" (ids + title + urls), "media" (adds images/onlineUrls), "full" (adds richer metadata). Overrides default fields unless fields is set.',
+              'Field preset: "compact" (ids + title + urls), "media" (adds images/external resources), "full" (adds richer metadata). Overrides default fields unless fields is set.',
           },
           page: { type: 'number' },
-          limit: { type: 'number' },
+          limit: { type: 'number', description: 'Number of results per page (20, 50 or 100). To count records, set limit=0 and read resultCount.' },
           sort: {
             type: 'string',
             description:
@@ -139,46 +143,63 @@ const ListToolsResponse = {
           filters: {
             type: 'object',
             description:
-              'Structured filters: {include:{field:[values]}, any:{field:[values]}, exclude:{field:[values]}}. For building/library, use list_organizations value strings and put them in include.building. For books: include.format=["0/Book/"]. For counts, pair filters with lookfor="" and limit=0.',
+              'Structured filters: {include:{field:[values]}, any:{field:[values]}, exclude:{field:[values]}}. For building/library, use list_organizations value strings in include.building. Example for books: include.format=["0/Book/"]. Use exclude.format=[...] to drop formats.',
           },
-          facets: { type: 'array', items: { type: 'string' } },
+          facets: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Facets to return (e.g., ["building", "format"]). If empty or omitted, no facets are returned. Note that building facet often returns lots of data. Use facetFilters to limit.'
+          },
           facetFilters: {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Raw facet filters in Finna syntax, e.g. ["building:\\"0/URHEILUMUSEO/\\"", "format:\\"0/Book/\\""]',
+              'Facet bucket filter only (does not filter records). Finna facet filter syntax, e.g. ["building:\\"0/URHEILUMUSEO/\\"", "format:\\"0/Book/\\""].',
           },
           fields: {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Record fields to return. Defaults include: id, title, formats, authors, buildings, languages, year, images, onlineUrls, urls, recordUrl, contributors. Use fields to request raw authors/nonPresenterAuthors.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, formats, authors, buildings, languages, year, images, onlineUrls, urls, recordUrl, contributors. Use fields for uncommon items like nonPresenterAuthors.',
           },
-          sampleLimit: { type: 'number' },
+          sampleLimit: {
+            type: 'number',
+            description:
+              'Max number of example resource links per record (lower = fewer tokens).',
+          },
         },
       },
     },
     {
       name: 'get_record',
-      description: 'Fetch record metadata for one or more ids.',
+      description: 'Get metadata for one or more records.',
       inputSchema: {
         type: 'object',
         properties: {
-          ids: { type: 'array', items: { type: 'string' } },
-          lng: { type: 'string' },
+          ids: { type: 'array', items: { type: 'string' }, description: 'Record ID(s)' },
+          lng: { type: 'string', description: 'Language code (e.g., "fi", "sv", "en")' },
+          fields_preset: {
+            type: 'string',
+            description:
+              'Field preset: "compact" (ids + title + urls), "media" (adds images/onlineUrls), "full" (adds richer metadata).',
+          },
           fields: {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Record fields to return. Defaults include: id, title, formats, buildings, subjects, genres, series, authors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements, contributors. Use fields to request raw nonPresenterAuthors.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, formats, buildings, subjects, genres, series, authors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements, contributors.',
           },
-          fields_preset: {
-            type: 'string',
+          includeRawData: {
+            type: 'boolean',
             description:
-              'Field preset: "compact" (ids + title + urls), "media" (adds images/onlineUrls), "full" (adds richer metadata). Overrides default fields unless fields is set.',
+              'Include raw source metadata (large/noisy). Use only when needed.',
           },
-          includeRawData: { type: 'boolean' },
-          sampleLimit: { type: 'number' },
+          sampleLimit: {
+            type: 'number',
+            description:
+              'Max number of example resource links per record.',
+          },
         },
         required: ['ids'],
       },
@@ -186,18 +207,18 @@ const ListToolsResponse = {
     {
       name: 'list_organizations',
       description:
-        'List organizations/buildings (e.g., libraries) using the Finna building facet. Use the returned value strings in search_records filters.include.building. Unfiltered results return only the top 2 levels with meta.pruned=true; use lookfor/filters for deeper levels.',
+        'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use the returned value strings in search_records filters.include.building. Unfiltered results return only the top 2 levels with meta.pruned=true; use lookfor/filters for deeper levels.',
       inputSchema: {
         type: 'object',
         properties: {
           lookfor: { type: 'string' },
           type: { type: 'string' },
-          lng: { type: 'string' },
+          lng: { type: 'string', description: 'Language code (e.g., "fi", "sv", "en")' },
           filters: { type: 'object' },
           max_depth: {
             type: 'number',
             description:
-              'Optional max depth for returned hierarchy (1-6). Overrides default pruning behavior when set.',
+              'Optional max depth for returned hierarchy (1-6)',
           },
           include_paths: {
             type: 'boolean',
@@ -214,13 +235,17 @@ const ListToolsResponse = {
     },
     {
       name: 'extract_resources',
-      description: 'Extract and summarize resource links for record ids.',
+      description: 'Return external resources related to records.',
       inputSchema: {
         type: 'object',
         properties: {
-          ids: { type: 'array', items: { type: 'string' } },
-          lng: { type: 'string' },
-          sampleLimit: { type: 'number' },
+          ids: { type: 'array', items: { type: 'string' }, description: 'Record ID(s)' },
+          lng: { type: 'string', description: 'Language code (e.g., "fi", "sv", "en")' },
+          sampleLimit: {
+            type: 'number',
+            description:
+              'Max number of example resource links per record.',
+          },
         },
         required: ['ids'],
       },
@@ -1451,7 +1476,7 @@ async function handleJsonRpc(body: JsonRpcRequest, env: Env): Promise<Response> 
 
     try {
       const result = await dispatchTool(name, args, env);
-      const contentText = JSON.stringify(result ?? {});
+      const contentText = summarizeToolResult(name, result);
       return json(
         jsonRpcResult(id, {
           content: [{ type: 'text', text: contentText }],
@@ -1572,6 +1597,82 @@ function jsonRpcError(id: JsonRpcRequest['id'], code: number, message: string, d
       data,
     },
   };
+}
+
+function summarizeToolResult(name: ToolName, result: Record<string, unknown> | null): string {
+  if (!result || typeof result !== 'object') {
+    return `${name}: ok`;
+  }
+  switch (name) {
+    case 'search_records': {
+      const resultCount = asNumber(result.resultCount);
+      const records = asArray(result.records);
+      const facets = asObject(result.facets);
+      const facetKeys = facets ? Object.keys(facets) : [];
+      const parts = ['search_records:'];
+      if (resultCount !== null) {
+        parts.push(`${resultCount} hits`);
+      }
+      if (records) {
+        parts.push(`${records.length} returned`);
+      }
+      if (facetKeys.length > 0) {
+        parts.push(`facets=${facetKeys.join(',')}`);
+      }
+      return parts.join(' ');
+    }
+    case 'get_record': {
+      const records = asArray(result.records);
+      const ids = records
+        ? records
+            .map((record) => (record && typeof record === 'object' ? record.id : null))
+            .filter((id): id is string => typeof id === 'string')
+        : [];
+      const parts = ['get_record:'];
+      parts.push(`${records ? records.length : 0} record(s)`);
+      if (ids.length > 0) {
+        parts.push(`ids=${ids.slice(0, 3).join(',')}${ids.length > 3 ? ',…' : ''}`);
+      }
+      return parts.join(' ');
+    }
+    case 'list_organizations': {
+      const facets = asObject(result.facets);
+      const building = facets ? asArray((facets as { building?: unknown }).building) : null;
+      const resultCount = asNumber(result.resultCount);
+      const count =
+        building !== null
+          ? building.length
+          : resultCount !== null
+            ? resultCount
+            : 0;
+      return `list_organizations: ${count} organization(s)`;
+    }
+    case 'extract_resources': {
+      const resources = asArray(result.resources);
+      return `extract_resources: ${resources ? resources.length : 0} record(s)`;
+    }
+  }
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function asArray(value: unknown): unknown[] | null {
+  return Array.isArray(value) ? value : null;
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 async function dispatchTool(
