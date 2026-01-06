@@ -363,15 +363,16 @@ describe('worker', () => {
     const tree = payload.result.facets?.building;
     expect(Array.isArray(tree)).toBe(true);
 
-    const hasLabel = (nodes: any[], label: string): boolean => {
+    const hasLabel = (nodes: unknown[], label: string): boolean => {
       for (const node of nodes) {
-        if (!node) {
+        if (!node || typeof node !== 'object') {
           continue;
         }
-        if (String(node.label) === label) {
+        const record = node as Record<string, unknown>;
+        if (String(record.label) === label) {
           return true;
         }
-        if (Array.isArray(node.children) && hasLabel(node.children, label)) {
+        if (Array.isArray(record.children) && hasLabel(record.children, label)) {
           return true;
         }
       }
@@ -435,12 +436,17 @@ describe('worker', () => {
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
     const tree = payload.result.facets?.building ?? [];
-    const hasPath = (nodes: any[]): boolean => {
+    const hasPath = (nodes: unknown[]): boolean => {
       for (const node of nodes) {
-        if (typeof node?.path === 'string' && node.path.includes('Eepos-kirjastot')) {
+        if (!node || typeof node !== 'object') {
+          continue;
+        }
+        const record = node as Record<string, unknown>;
+        const path = record.path;
+        if (typeof path === 'string' && path.includes('Eepos-kirjastot')) {
           return true;
         }
-        if (Array.isArray(node.children) && hasPath(node.children)) {
+        if (Array.isArray(record.children) && hasPath(record.children)) {
           return true;
         }
       }

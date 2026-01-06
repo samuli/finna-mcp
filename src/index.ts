@@ -2,7 +2,6 @@ import { z } from 'zod';
 import {
   buildSearchUrl,
   buildRecordUrl,
-  buildFacetUrl,
   extractResourcesFromRecord,
   enrichRecordResources,
   type FilterInput,
@@ -674,10 +673,6 @@ function mapFilterValue(field: string, value: string): string {
   return value;
 }
 
-function stripFacetHrefs(payload: Record<string, unknown>): Record<string, unknown> {
-  return stripHrefDeep(payload) as Record<string, unknown>;
-}
-
 function stripFacetsIfUnused(
   payload: Record<string, unknown>,
   requestedFacets?: string[] | null,
@@ -688,7 +683,8 @@ function stripFacetsIfUnused(
   if (!('facets' in payload)) {
     return payload;
   }
-  const { facets, ...rest } = payload;
+  const { facets: omittedFacets, ...rest } = payload;
+  void omittedFacets;
   return rest as Record<string, unknown>;
 }
 
@@ -715,23 +711,6 @@ function normalizeSort(sort?: string): string | undefined {
   return sort;
 }
 
-function stripHrefDeep(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => stripHrefDeep(item));
-  }
-  if (value && typeof value === 'object') {
-    const input = value as Record<string, unknown>;
-    const output: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(input)) {
-      if (key === 'href') {
-        continue;
-      }
-      output[key] = stripHrefDeep(val);
-    }
-    return output;
-  }
-  return value;
-}
 
 const ORGANIZATIONS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -952,7 +931,8 @@ function pruneFacetEntriesDepth(
     }
     if (depth >= maxDepth - 1) {
       prunedCount += children.length;
-      const { children: _omit, ...rest } = record;
+      const { children: omittedChildren, ...rest } = record;
+      void omittedChildren;
       return rest;
     }
     const next = pruneFacetEntriesDepth(children, maxDepth, depth + 1);
@@ -1326,7 +1306,8 @@ function stripRecordUrl(record: Record<string, unknown>): Record<string, unknown
   if (!('recordUrl' in record)) {
     return record;
   }
-  const { recordUrl: _omit, ...rest } = record;
+  const { recordUrl: omittedRecordUrl, ...rest } = record;
+  void omittedRecordUrl;
   return rest;
 }
 
