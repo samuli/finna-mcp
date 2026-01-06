@@ -283,6 +283,45 @@ describe('worker', () => {
     expect(payload.result.facets).toBeDefined();
   });
 
+  it('maps top-level helpers into filters', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ resultCount: 0, records: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: {
+          name: 'search_records',
+          arguments: {
+            lookfor: '',
+            available_online: true,
+            usage_rights: ['usage_A'],
+            content_type: '0/Book/',
+            organization: ['0/Helmet/'],
+            language: 'fin',
+            limit: 0,
+          },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    expect(response.status).toBe(200);
+    const calledUrl = String(mockFetch.mock.calls[0][0]);
+    expect(calledUrl).toContain('filter%5B%5D=free_online_boolean%3A%221%22');
+    expect(calledUrl).toContain('filter%5B%5D=usage_rights_str_mv%3A%22usage_A%22');
+    expect(calledUrl).toContain('filter%5B%5D=format%3A%220%2FBook%2F%22');
+    expect(calledUrl).toContain('filter%5B%5D=building%3A%220%2FHelmet%2F%22');
+    expect(calledUrl).toContain('filter%5B%5D=language%3A%22fin%22');
+  });
+
   it('list_organizations uses building facet', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch.mockResolvedValueOnce(

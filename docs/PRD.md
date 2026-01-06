@@ -245,6 +245,27 @@ Use these in `filters.include.format` when narrowing by type:
   - Warn when building filter values include spaces (likely a path label, not an ID).
   - Apply the same validations to hierarchical facets (per Finna docs: `format`, `building`, `sector_str_mv`, `category_str_mv`).
 
+## Proposed Top‑Level Filter Helpers (2026-01-06)
+Goal: reduce Finna field knowledge required by LLMs while keeping raw `filters` available.
+
+### Recommended helpers (mapped to Finna fields)
+- `available_online: boolean` → `filters.include.free_online_boolean=["1"]` (matches UI “Available online”)
+- `usage_rights: string[]` → `filters.include.usage_rights_str_mv=[...]`
+  - Finna usage rights codes (facet field) include:
+    - `usage_A` = Free use
+    - `usage_B` = Derivatives, also commercial
+    - `usage_C` = No derivatives, also commercial
+    - `usage_D` = Derivatives, non‑commercial
+    - `usage_E` = No derivatives, non‑commercial
+    - `usage_F` = Permission required / unknown
+- `content_type: string[]` → `filters.include.format=[...]` (format IDs)
+- `organization: string[]` → `filters.include.building=[...]` (building IDs)
+- `language: string[]` → `filters.include.language=[...]` (ISO 639‑3 codes)
+
+### Documentation notes
+- Mention that usage rights typically apply to online material; combine with `available_online`.
+- Keep `filters` as an advanced escape hatch for fields not covered by helpers.
+- Reference that `format`, `building`, `sector_str_mv`, `category_str_mv` are hierarchical facet fields; values are path‑style IDs with slashes.
 ## Users
 - TODO
 

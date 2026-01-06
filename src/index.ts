@@ -79,6 +79,11 @@ const SearchRecordsArgs = z.object({
   limit: z.number().int().min(0).max(100).optional(),
   sort: z.enum(SEARCH_SORT_OPTIONS).optional(),
   lng: z.string().optional(),
+  available_online: z.boolean().optional(),
+  usage_rights: z.union([z.string(), z.array(z.string())]).optional(),
+  content_type: z.union([z.string(), z.array(z.string())]).optional(),
+  organization: z.union([z.string(), z.array(z.string())]).optional(),
+  language: z.union([z.string(), z.array(z.string())]).optional(),
   filters: FilterSchema,
   facets: z.array(z.string()).optional(),
   facetFilters: z.array(z.string()).optional(),
@@ -147,6 +152,35 @@ const ListToolsResponse = {
               'Sort options: "relevance" (default), "newest" (recently added to Finna), "oldest" (earliest added), "year_newest" (newest publication/creation year), "year_oldest" (oldest year).',
           },
           lng: { type: 'string' },
+          available_online: {
+            type: 'boolean',
+            description:
+              'Available online (free access). Maps to Finna free_online_boolean.',
+          },
+          usage_rights: {
+            type: ['string', 'array'],
+            items: { type: 'string' },
+            description:
+              'Usage rights codes (e.g., ["usage_A", "usage_E"]). Maps to usage_rights_str_mv.',
+          },
+          content_type: {
+            type: ['string', 'array'],
+            items: { type: 'string' },
+            description:
+              'Content types (format IDs). Maps to format. Example: "0/Book/".',
+          },
+          organization: {
+            type: ['string', 'array'],
+            items: { type: 'string' },
+            description:
+              'Organizations/buildings (IDs from list_organizations). Maps to building.',
+          },
+          language: {
+            type: ['string', 'array'],
+            items: { type: 'string' },
+            description:
+              'Language codes (e.g., "fin", "swe", "eng"). Maps to language.',
+          },
           filters: {
             type: 'object',
             description:
@@ -456,6 +490,11 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     limit,
     sort,
     lng,
+    available_online,
+    usage_rights,
+    content_type,
+    organization,
+    language,
     filters,
     facets,
     facetFilters,
@@ -463,6 +502,13 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     sampleLimit,
   } = parsed.data;
   let normalizedFilters = normalizeFilters(filters);
+  normalizedFilters = mergeTopLevelFilters(normalizedFilters, {
+    available_online,
+    usage_rights,
+    content_type,
+    organization,
+    language,
+  });
   const buildingWarnings = collectHierarchicalFilterWarnings(normalizedFilters);
   const normalizedBuilding = await normalizeBuildingFiltersWithCache(
     normalizedFilters,
@@ -681,6 +727,66 @@ function normalizeFilters(filters?: unknown): FilterInput | undefined {
     }
   }
   return Object.keys(include).length > 0 ? { include } : undefined;
+}
+
+function mergeTopLevelFilters(
+  filters: FilterInput | undefined,
+  options: {
+    available_online?: boolean;
+    usage_rights?: string | string[];
+    content_type?: string | string[];
+    organization?: string | string[];
+    language?: string | string[];
+  },
+): FilterInput | undefined {
+  const merged: FilterInput = filters ? { ...filters } : {};
+  merged.include = merged.include ? { ...merged.include } : {};
+
+  if (options.available_online) {
+    addFilterValues(merged.include, 'free_online_boolean', ['1']);
+  }
+  if (options.usage_rights) {
+    addFilterValues(
+      merged.include,
+      'usage_rights_str_mv',
+      coerceStringArray(options.usage_rights),
+    );
+  }
+  if (options.content_type) {
+    addFilterValues(merged.include, 'format', coerceStringArray(options.content_type));
+  }
+  if (options.organization) {
+    addFilterValues(merged.include, 'building', coerceStringArray(options.organization));
+  }
+  if (options.language) {
+    addFilterValues(merged.include, 'language', coerceStringArray(options.language));
+  }
+
+  return Object.keys(merged.include).length > 0 || merged.any || merged.exclude
+    ? merged
+    : undefined;
+}
+
+function coerceStringArray(value: string | string[]): string[] {
+  return Array.isArray(value) ? value : [value];
+}
+
+function addFilterValues(
+  bucket: Record<string, string[]>,
+  field: string,
+  values: string[],
+): void {
+  if (values.length === 0) {
+    return;
+  }
+  const existing = bucket[field] ?? [];
+  const merged = new Set(existing);
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) {
+      merged.add(value);
+    }
+  }
+  bucket[field] = Array.from(merged);
 }
 
 function normalizeFilterBucket(
