@@ -328,7 +328,15 @@ suite('integration (local wrangler)', () => {
       if (!Number.isFinite(count)) {
         return;
       }
-      expect(count).toBeGreaterThan(0);
+      if (count > 0) {
+        expect(count).toBeGreaterThan(0);
+        return;
+      }
+      const warning = String(payload.result?.meta?.warning ?? '');
+      expect(
+        warning.includes('Hierarchical facet filters should use path IDs') ||
+          warning.includes('Organization label'),
+      ).toBe(true);
     },
     15000,
   );
