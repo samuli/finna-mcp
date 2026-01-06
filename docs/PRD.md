@@ -228,6 +228,18 @@ Use these in `filters.include.format` when narrowing by type:
   - With `structured_output=1`: `structuredContent` carries the full result; `content` is a short summary.
 - This avoids doubling tokens by default while still supporting clients that only read `content`.
 
+### Building filter reliability (`filters.include.building`)
+- Reported issue: reviewer claims building filter did not narrow results (e.g., `filters.include.building=["0/SATAKIRJASTOT/"]`).
+- Current implementation: `filters.include.building` is translated into `filter[]=building:"<value>"` and matches Finna’s API filter syntax.
+- Likely root causes:
+  - Client used building label instead of value ID (e.g., "Satakirjastot" vs `0/SATAKIRJASTOT/`), or case mismatch.
+  - Client only saw summary output and assumed filters were ignored.
+- Proposed next steps:
+  - Add an integration test that validates a known building filter actually narrows results and that returned records include the building path.
+  - Add `meta.warning` when a building filter value does not look like a Finna ID path (e.g., no `/`), reminding to use list_organizations values.
+  - If false positives remain, investigate mapping labels to IDs via cached organization list (optional).
+  - Normalize missing trailing slash in building filter values (e.g., `0/Helmet` -> `0/Helmet/`).
+
 ## Users
 - TODO
 

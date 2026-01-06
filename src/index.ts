@@ -698,6 +698,9 @@ function mapFilterField(field: string): string {
 }
 
 function mapFilterValue(field: string, value: string): string {
+  if (field === 'building' && value.includes('/') && !value.endsWith('/')) {
+    return `${value}/`;
+  }
   if (field === 'format' && value.toLowerCase() === 'book') {
     return '0/Book/';
   }

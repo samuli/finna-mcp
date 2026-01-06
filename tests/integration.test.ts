@@ -160,4 +160,66 @@ suite('integration (local wrangler)', () => {
     },
     15000,
   );
+
+  it(
+    'search_records building filter narrows results',
+    async () => {
+      if (!available) {
+        return;
+      }
+      const basePayload = {
+        method: 'callTool',
+        params: {
+          name: 'search_records',
+          arguments: {
+            lookfor: '',
+            limit: 0,
+            filters: {
+              include: { format: ['0/Book/'] },
+            },
+          },
+        },
+      };
+      const filteredPayload = {
+        method: 'callTool',
+        params: {
+          name: 'search_records',
+          arguments: {
+            lookfor: '',
+            limit: 0,
+            filters: {
+              include: { format: ['0/Book/'], building: ['0/Helmet'] },
+            },
+          },
+        },
+      };
+
+      const baseResponse = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(basePayload),
+      });
+      expect(baseResponse.ok).toBe(true);
+      const baseData = await baseResponse.json();
+      const baseCount = Number(baseData.result?.resultCount ?? 0);
+      if (!Number.isFinite(baseCount) || baseCount === 0) {
+        return;
+      }
+
+      const filteredResponse = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(filteredPayload),
+      });
+      expect(filteredResponse.ok).toBe(true);
+      const filteredData = await filteredResponse.json();
+      const filteredCount = Number(filteredData.result?.resultCount ?? 0);
+      if (!Number.isFinite(filteredCount)) {
+        return;
+      }
+      expect(filteredCount).toBeGreaterThan(0);
+      expect(filteredCount).toBeLessThan(baseCount);
+    },
+    15000,
+  );
 });
