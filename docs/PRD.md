@@ -214,6 +214,20 @@ Use these in `filters.include.format` when narrowing by type:
 - `fields_preset="compact"` returns minimal fields (observed: `id`, `title`, `recordUrl`).
 - `fields_preset="full"` returns richer metadata including `authors`, `buildings`, `genres`, `publishers`, etc.
 
+## Review Feedback (2026-01-06)
+### Tool Output Compatibility: `content` vs `structuredContent`
+- Reviewer reports that their MCP client only reads `content` (human-readable) and ignores `structuredContent`. This caused missing IDs/records even when `fields` were requested (e.g., `search_records(fields=["id","title","authors"], limit=3)` returned only a summary string).
+- Current behavior: `structuredContent` contains full JSON result; `content` is a short summary (to avoid duplication).
+- Risk: clients that ignore `structuredContent` lose access to records and IDs.
+
+### Tentative direction
+- Implement a URL parameter to switch modes: `structured_output=1`.
+  - Default (no param): `content` contains a JSON wrapper:
+    - `{ summary, warning?, info?, response }`
+    - `response` is the full tool result object; `summary` is human-readable.
+  - With `structured_output=1`: `structuredContent` carries the full result; `content` is a short summary.
+- This avoids doubling tokens by default while still supporting clients that only read `content`.
+
 ## Users
 - TODO
 

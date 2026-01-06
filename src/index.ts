@@ -149,7 +149,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Facets to return (e.g., ["building", "format"]). If empty or omitted, no facets are returned. Note that building facet often returns lots of data. Use facetFilters to limit.'
+            'Facets to return (e.g., ["building", "format"]). If empty or omitted, no facets are returned. Note that facets (especially building) often returns lots of data. Use facetFilters to limit.'
           },
           facetFilters: {
             type: 'array',
@@ -166,7 +166,7 @@ const ListToolsResponse = {
           sampleLimit: {
             type: 'number',
             description:
-              'Max number of example resource links per record (lower = fewer tokens).',
+              'Max number of example resource links per record.',
           },
         },
       },
@@ -259,18 +259,24 @@ export default {
     if (url.pathname !== '/mcp') {
       return new Response('Not Found', { status: 404 });
     }
+    const structuredOutput = url.searchParams.get('structured_output') === '1';
 
     if (request.method === 'GET') {
       const accept = request.headers.get('accept') ?? '';
       if (accept.includes('text/event-stream')) {
-        return handleSseRequest(request);
+        return handleSseRequest(request, structuredOutput);
       }
       return new Response('Method Not Allowed', { status: 405 });
     }
 
     if (request.method === 'POST' && url.searchParams.get('session')) {
       const body = await request.json().catch(() => null);
-      return await handleSsePost(url.searchParams.get('session') ?? '', body, env);
+      return await handleSsePost(
+        url.searchParams.get('session') ?? '',
+        body,
+        env,
+        structuredOutput,
+      );
     }
 
     if (request.method !== 'POST') {
@@ -283,7 +289,7 @@ export default {
     }
 
     if (isJsonRpc(body)) {
-      return await handleJsonRpc(body, env);
+      return await handleJsonRpc(body, env, structuredOutput);
     }
 
     if (body.method === 'listTools') {
@@ -1436,7 +1442,11 @@ const SERVER_INFO = {
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 
-async function handleJsonRpc(body: JsonRpcRequest, env: Env): Promise<Response> {
+async function handleJsonRpc(
+  body: JsonRpcRequest,
+  env: Env,
+  structuredOutput: boolean,
+): Promise<Response> {
   const { id, method } = body;
 
   if (method === 'initialize') {
@@ -1478,20 +1488,18 @@ async function handleJsonRpc(body: JsonRpcRequest, env: Env): Promise<Response> 
       const result = await dispatchTool(name, args, env);
       const contentText = summarizeToolResult(name, result);
       return json(
-        jsonRpcResult(id, {
-          content: [{ type: 'text', text: contentText }],
-          structuredContent: result,
-          isError: false,
-        }),
+        jsonRpcResult(
+          id,
+          buildToolOutput(name, result, contentText, structuredOutput),
+        ),
       );
     } catch (error) {
       const message = errorMessage(error);
       return json(
-        jsonRpcResult(id, {
-          content: [{ type: 'text', text: message }],
-          structuredContent: { error: 'upstream_error', message },
-          isError: true,
-        }),
+        jsonRpcResult(
+          id,
+          buildToolErrorOutput(name, message, structuredOutput),
+        ),
         200,
       );
     }
@@ -1505,7 +1513,7 @@ const sseSessions = new Map<
   { controller: ReadableStreamDefaultController<Uint8Array> }
 >();
 
-function handleSseRequest(request: Request): Response {
+function handleSseRequest(request: Request, structuredOutput: boolean): Response {
   const accept = request.headers.get('accept') ?? '';
   if (!accept.includes('text/event-stream')) {
     return new Response('Method Not Allowed', { status: 405 });
@@ -1518,6 +1526,9 @@ function handleSseRequest(request: Request): Response {
       sseSessions.set(sessionId, { controller });
       const endpointUrl = new URL(request.url);
       endpointUrl.searchParams.set('session', sessionId);
+      if (structuredOutput) {
+        endpointUrl.searchParams.set('structured_output', '1');
+      }
       const payload = `event: endpoint\ndata: ${endpointUrl.toString()}\n\n`;
       controller.enqueue(encoder.encode(payload));
     },
@@ -1540,6 +1551,7 @@ async function handleSsePost(
   sessionId: string,
   body: unknown,
   env: Env,
+  structuredOutput: boolean,
 ): Promise<Response> {
   try {
     const session = sseSessions.get(sessionId);
@@ -1552,7 +1564,7 @@ async function handleSsePost(
       return json({ error: 'invalid_request' }, 400);
     }
 
-    const response = await handleJsonRpc(rpcParsed.data, env);
+    const response = await handleJsonRpc(rpcParsed.data, env, structuredOutput);
     const jsonBody = await response.text();
     const encoder = new TextEncoder();
     const message = `event: message\ndata: ${jsonBody}\n\n`;
@@ -1597,6 +1609,70 @@ function jsonRpcError(id: JsonRpcRequest['id'], code: number, message: string, d
       data,
     },
   };
+}
+
+function buildToolOutput(
+  name: ToolName,
+  result: Record<string, unknown>,
+  summary: string,
+  structuredOutput: boolean,
+): Record<string, unknown> {
+  const wrapped = buildContentWrapper(name, summary, result);
+  if (structuredOutput) {
+    return {
+      content: [{ type: 'text', text: wrapped.summary as string }],
+      structuredContent: wrapped,
+      isError: false,
+    };
+  }
+  return {
+    content: [{ type: 'text', text: JSON.stringify(wrapped) }],
+    isError: false,
+  };
+}
+
+function buildToolErrorOutput(
+  name: ToolName,
+  message: string,
+  structuredOutput: boolean,
+): Record<string, unknown> {
+  const wrapped = buildContentWrapper(name, message, {
+    error: 'upstream_error',
+    message,
+  });
+  if (structuredOutput) {
+    return {
+      content: [{ type: 'text', text: wrapped.summary as string }],
+      structuredContent: wrapped,
+      isError: true,
+    };
+  }
+  return {
+    content: [{ type: 'text', text: JSON.stringify(wrapped) }],
+    isError: true,
+  };
+}
+
+function buildContentWrapper(
+  name: ToolName,
+  summary: string,
+  result: Record<string, unknown>,
+): Record<string, unknown> {
+  const meta = asObject(result.meta);
+  const warning =
+    meta && typeof meta.warning === 'string' ? meta.warning : undefined;
+  const info = meta && typeof meta.info === 'string' ? meta.info : undefined;
+  const wrapper: Record<string, unknown> = {
+    summary,
+    response: result,
+  };
+  if (warning) {
+    wrapper.warning = warning;
+  }
+  if (info) {
+    wrapper.info = info;
+  }
+  return wrapper;
 }
 
 function summarizeToolResult(name: ToolName, result: Record<string, unknown> | null): string {

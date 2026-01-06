@@ -32,6 +32,74 @@ describe('worker', () => {
     expect(payload.tools?.length).toBeGreaterThan(0);
   });
 
+  it('wraps tool results in content by default', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resultCount: 1,
+          records: [{ id: 'test.1', title: 'Example' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'search_records',
+          arguments: { lookfor: 'example', limit: 1 },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    const payload = await response.json();
+    const contentText = payload.result.content[0].text as string;
+    const parsed = JSON.parse(contentText);
+    expect(parsed.summary).toContain('search_records');
+    expect(parsed.response.resultCount).toBe(1);
+    expect(payload.result.structuredContent).toBeUndefined();
+  });
+
+  it('uses structured_output when requested', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resultCount: 2,
+          records: [{ id: 'test.2', title: 'Example 2' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const request = new Request('http://example.com/mcp?structured_output=1', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'search_records',
+          arguments: { lookfor: 'example', limit: 1 },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, baseEnv);
+    const payload = await response.json();
+    expect(payload.result.content[0].text).toContain('search_records');
+    expect(payload.result.structuredContent.summary).toContain('search_records');
+    expect(payload.result.structuredContent.response.resultCount).toBe(2);
+  });
+
   it('search_records builds filters and enriches resources', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch.mockResolvedValueOnce(
