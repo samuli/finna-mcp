@@ -1088,7 +1088,7 @@ Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
 
 11) New in Finna (recently added)
 \`\`\`json
-{"filters": {"include": {"new_finna_boolean": ["1"]}}, "sort": "newest", "limit": 10}
+{"filters": {"include": {"first_indexed": ["[NOW-1MONTHS/DAY TO *]"]}}, "sort": "newest", "limit": 10}
 \`\`\`
 
 ## More information
