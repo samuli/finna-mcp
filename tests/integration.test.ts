@@ -152,11 +152,22 @@ suite('integration (local wrangler)', () => {
         return;
       }
       const needle = query.toLowerCase();
-      for (const entry of entries) {
-        const value = String(entry?.value ?? '').toLowerCase();
-        const translated = String(entry?.translated ?? '').toLowerCase();
-        expect(value.includes(needle) || translated.includes(needle)).toBe(true);
-      }
+      const matches = (node: unknown): boolean => {
+        if (!node || typeof node !== 'object') {
+          return false;
+        }
+        const record = node as { value?: unknown; translated?: unknown; children?: unknown };
+        const value = String(record.value ?? '').toLowerCase();
+        const translated = String(record.translated ?? '').toLowerCase();
+        if (value.includes(needle) || translated.includes(needle)) {
+          return true;
+        }
+        if (Array.isArray(record.children)) {
+          return record.children.some(matches);
+        }
+        return false;
+      };
+      expect(entries.some(matches)).toBe(true);
     },
     15000,
   );
