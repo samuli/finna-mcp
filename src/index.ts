@@ -187,7 +187,7 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Publication/creation year or range (e.g., "2026" or "2020-2025").',
+              'Publication/creation year filter: use a single year ("2024"), a range string ("2020-2025"), or an array of specific years/ranges (["1999","2005-2010"]).',
           },
           filters: {
             type: 'object',
