@@ -406,13 +406,6 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   const normalizedFilters = normalizeFilters(filters);
   const normalizedSort = normalizeSort(sort);
   const selectedFields = fields ?? resolveSearchFieldsPreset(fields_preset);
-  const maybeAdvancedHint =
-    search_mode !== 'advanced' && looksMultiTerm(lookfor)
-      ? {
-          warning:
-            'Multi-term lookfor detected; consider search_mode="advanced" with advanced_operator="AND" for better precision.',
-        }
-      : null;
 
   const url = buildSearchUrl({
     apiBase: env.FINNA_API_BASE,
@@ -445,12 +438,21 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     selectedFields && !selectedFields.includes('recordUrl')
       ? enriched.map((record) => stripRecordUrl(record))
       : enriched;
+  const meta = buildSearchMeta({
+    lookfor,
+    search_mode,
+    fields_preset,
+    fields,
+    limit,
+    resultCount: payload.resultCount,
+    records: cleaned,
+  });
 
   return json({
     result: {
       ...stripFacetsIfUnused(payload, facets),
       records: cleaned,
-      ...(maybeAdvancedHint ? { meta: maybeAdvancedHint } : {}),
+      ...(meta ? { meta } : {}),
     },
   });
 }
@@ -823,6 +825,8 @@ function pruneOrganizationsDepth(
       prunedDepth: maxDepth,
       prunedCount,
       reason,
+      hint:
+        'Use max_depth for deeper levels or include_paths for clearer hierarchy labels.',
     },
   };
 }
@@ -1310,6 +1314,77 @@ function looksMultiTerm(lookfor: string): boolean {
   }
   const unquoted = trimmed.replace(/"[^"]+"/g, '').trim();
   return /\s/.test(unquoted);
+}
+
+function buildSearchMeta(options: {
+  lookfor: string;
+  search_mode?: string;
+  fields_preset?: string;
+  fields?: string[] | null;
+  limit?: number;
+  resultCount?: number;
+  records: Record<string, unknown>[];
+}): Record<string, unknown> | null {
+  const warnings: string[] = [];
+  const info: string[] = [];
+  const {
+    lookfor,
+    search_mode,
+    fields_preset,
+    fields,
+    limit,
+    resultCount,
+    records,
+  } = options;
+
+  if (search_mode !== 'advanced' && looksMultiTerm(lookfor)) {
+    warnings.push(
+      'Multi-term lookfor detected; consider search_mode="advanced" with advanced_operator="AND" for better precision.',
+    );
+  }
+  if (search_mode === 'advanced' && !looksMultiTerm(lookfor)) {
+    info.push('Advanced search used with a single term; simple mode may be faster.');
+  }
+  if (fields_preset && fields && fields.length > 0) {
+    info.push('fields overrides fields_preset for returned fields.');
+  }
+  if (typeof resultCount === 'number' && resultCount === 0) {
+    warnings.push(
+      'No results. Consider search_mode="advanced", loosening filters, or trying a shorter lookfor.',
+    );
+  }
+  if (typeof resultCount === 'number' && limit && resultCount > limit * 100) {
+    info.push(
+      'Large result set. Consider narrowing with filters.include.building or filters.include.format.',
+    );
+  }
+  const hasResources = records.some((record) => {
+    const images = record.images;
+    const urls = record.urls;
+    const onlineUrls = record.onlineUrls;
+    return (
+      (Array.isArray(images) && images.length > 0) ||
+      (Array.isArray(urls) && urls.length > 0) ||
+      (Array.isArray(onlineUrls) && onlineUrls.length > 0)
+    );
+  });
+  if (records.length > 0 && !hasResources) {
+    info.push(
+      'No online resources found in these records; try fields_preset="full" or includeRawData for more source-specific links.',
+    );
+  }
+
+  if (warnings.length === 0 && info.length === 0) {
+    return null;
+  }
+  const meta: Record<string, unknown> = {};
+  if (warnings.length > 0) {
+    meta.warning = warnings.join(' ');
+  }
+  if (info.length > 0) {
+    meta.info = info.join(' ');
+  }
+  return meta;
 }
 
 type JsonRpcRequest = {

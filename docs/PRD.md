@@ -184,6 +184,20 @@ Use these in `filters.include.format` when narrowing by type:
 - Single-term query (`sibelius`) returns no `meta` warning.
 - Multi-term query (`deep learning algorithm`) returns `meta.warning` while `resultCount` remains unaffected.
 
+## Feature: Search Meta Guidance (2026-01-06)
+### Change
+- `search_records` adds `meta.info`/`meta.warning` to guide models:
+  - Suggest advanced mode for multi-term queries.
+  - Warn on zero results.
+  - Note large result sets (suggest filters).
+  - Note missing online resources in returned records.
+  - Inform when `fields` overrides `fields_preset`.
+
+### Re-evaluation
+- Multi-term queries now include `meta.warning` for advanced mode.
+- Large result sets include `meta.info` suggesting building/format filters.
+- `fields` + `fields_preset` includes override notice.
+
 ## Feature: Compact Organization Listing (2026-01-06)
 ### Change
 - `list_organizations(compact=true)` returns only top-level orgs with `{value,label,count}` and no `children`.
