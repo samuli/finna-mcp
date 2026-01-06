@@ -65,6 +65,36 @@ suite('integration (local wrangler)', () => {
     }
   });
 
+  it('search_records format filter returns matching formats', async () => {
+    if (!available) {
+      return;
+    }
+    const response = await fetch(baseUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: {
+          name: 'search_records',
+          arguments: {
+            query: '',
+            format: '0/Image/',
+            limit: 1,
+          },
+        },
+      }),
+    });
+    expect(response.ok).toBe(true);
+    const payload = await response.json();
+    const record = payload.result.records?.[0];
+    if (!record) {
+      return;
+    }
+    const formats = Array.isArray(record.formats) ? record.formats : [];
+    const hasImage = formats.some((format: { value?: string }) => format?.value === '0/Image/');
+    expect(hasImage).toBe(true);
+  });
+
   it('get_record returns details for a returned id', async () => {
     if (!available) {
       return;
