@@ -75,6 +75,7 @@ const GetRecordArgs = z.object({
   ids: z.array(z.string()).min(1),
   lng: z.string().optional(),
   fields: z.array(z.string()).optional(),
+  fields_preset: z.enum(['compact', 'media', 'full']).optional(),
   includeRawData: z.boolean().optional(),
   sampleLimit: z.number().int().min(1).max(5).optional(),
 });
@@ -162,6 +163,11 @@ const ListToolsResponse = {
             items: { type: 'string' },
             description:
               'Record fields to return. Defaults include: id, title, formats, buildings, subjects, genres, series, authors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements, contributors. Use fields to request raw nonPresenterAuthors.',
+          },
+          fields_preset: {
+            type: 'string',
+            description:
+              'Field preset: "compact" (ids + title + urls), "media" (adds images/onlineUrls), "full" (adds richer metadata). Overrides default fields unless fields is set.',
           },
           includeRawData: { type: 'boolean' },
           sampleLimit: { type: 'number' },
@@ -309,6 +315,14 @@ function resolveSearchFieldsPreset(preset?: string): string[] {
   return selected ? [...selected] : [...DEFAULT_SEARCH_FIELDS];
 }
 
+function resolveGetRecordFieldsPreset(preset?: string): string[] {
+  if (!preset) {
+    return [...DEFAULT_RECORD_FIELDS];
+  }
+  const selected = GET_RECORD_FIELD_PRESETS[preset];
+  return selected ? [...selected] : [...DEFAULT_RECORD_FIELDS];
+}
+
 const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
   compact: ['id', 'title', 'recordUrl', 'urls', 'onlineUrls'],
   media: ['id', 'title', 'recordUrl', 'images', 'urls', 'onlineUrls', 'formats', 'languages', 'year'],
@@ -322,6 +336,40 @@ const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
     'images',
     'onlineUrls',
     'urls',
+    'subjects',
+    'genres',
+    'series',
+    'authors',
+    'publishers',
+    'summary',
+    'measurements',
+  ],
+};
+
+const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
+  compact: ['id', 'title', 'recordUrl', 'urls', 'onlineUrls'],
+  media: [
+    'id',
+    'title',
+    'recordUrl',
+    'images',
+    'urls',
+    'onlineUrls',
+    'formats',
+    'languages',
+    'year',
+  ],
+  full: [
+    'id',
+    'title',
+    'recordUrl',
+    'formats',
+    'languages',
+    'year',
+    'images',
+    'onlineUrls',
+    'urls',
+    'buildings',
     'subjects',
     'genres',
     'series',
@@ -410,8 +458,8 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const { ids, lng, fields, includeRawData, sampleLimit } = parsed.data;
-  const selectedFields = fields ? [...fields] : [...DEFAULT_RECORD_FIELDS];
+  const { ids, lng, fields, fields_preset, includeRawData, sampleLimit } = parsed.data;
+  const selectedFields = fields ? [...fields] : resolveGetRecordFieldsPreset(fields_preset);
   if (includeRawData) {
     selectedFields.push('rawData');
   }
@@ -432,7 +480,7 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
     ),
   );
   const cleaned =
-    fields && !fields.includes('recordUrl')
+    selectedFields && !selectedFields.includes('recordUrl')
       ? enriched.map((record) => stripRecordUrl(record))
       : enriched;
 

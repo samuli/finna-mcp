@@ -191,6 +191,14 @@ Use these in `filters.include.format` when narrowing by type:
 ### Re-evaluation
 - `list_organizations(compact=true)` returns small payloads with no children and `meta.compact=true`.
 
+## Feature: get_record Field Presets (2026-01-06)
+### Change
+- `get_record(fields_preset=compact|media|full)` mirrors `search_records` presets for consistent field selection.
+
+### Re-evaluation
+- `fields_preset="compact"` returns minimal fields (observed: `id`, `title`, `recordUrl`).
+- `fields_preset="full"` returns richer metadata including `authors`, `buildings`, `genres`, `publishers`, etc.
+
 ## Users
 - TODO
 

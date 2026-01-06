@@ -241,6 +241,41 @@ describe('worker', () => {
     expect(calledUrl).toContain('field%5B%5D=rawData');
   });
 
+  it('get_record supports field presets', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          records: [
+            {
+              id: 'a.1',
+              urls: [{ url: 'https://example.com' }],
+              onlineUrls: [],
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const request = new Request('http://example.com/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        method: 'callTool',
+        params: {
+          name: 'get_record',
+          arguments: { ids: ['a.1'], fields_preset: 'compact' },
+        },
+      }),
+    });
+
+    await worker.fetch(request, baseEnv);
+    const calledUrl = String(mockFetch.mock.calls[0][0]);
+    expect(calledUrl).toContain('field%5B%5D=recordUrl');
+    expect(calledUrl).not.toContain('field%5B%5D=buildings');
+  });
+
   it('extract_resources returns samples per record', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch.mockResolvedValueOnce(
