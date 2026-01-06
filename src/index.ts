@@ -210,7 +210,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, formats, authors, organizations, languages, year, images, onlineUrls, urls, recordUrl, contributors. Use fields for uncommon items like nonPresenterAuthors.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, formats, authors, organization (summary), languages, year, images, onlineUrls, urls, recordUrl, contributors. Use fields for uncommon items like nonPresenterAuthors.',
           },
           sampleLimit: {
             type: 'number',
@@ -473,6 +473,40 @@ function normalizeRecordOrganizations(record: Record<string, unknown>): Record<s
   };
 }
 
+function summarizeOrganizations(record: Record<string, unknown>): Record<string, unknown> {
+  if (!record || typeof record !== 'object') {
+    return record;
+  }
+  const organizations = record.organizations;
+  if (!Array.isArray(organizations) || organizations.length === 0) {
+    return record;
+  }
+  const primary = organizations[0];
+  const label =
+    primary && typeof primary === 'object'
+      ? String((primary as { translated?: unknown; label?: unknown }).translated ??
+          (primary as { translated?: unknown; label?: unknown }).label ??
+          '')
+      : '';
+  const code =
+    primary && typeof primary === 'object'
+      ? String((primary as { value?: unknown }).value ?? '')
+      : '';
+  const locationCount = Math.max(organizations.length - 1, 0);
+  const summary = {
+    primary: label || undefined,
+    code: code || undefined,
+    locations: locationCount || undefined,
+    note: 'Use get_record for the full organization list.',
+  };
+  const { organizations: _omit, ...rest } = record;
+  void _omit;
+  return {
+    ...rest,
+    organization: summary,
+  };
+}
+
 const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
   compact: ['id', 'title', 'recordUrl', 'urls', 'onlineUrls'],
   media: ['id', 'title', 'recordUrl', 'images', 'urls', 'onlineUrls', 'formats', 'languages', 'year'],
@@ -599,10 +633,12 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     limit === 0
       ? []
       : records.map((record) =>
-          normalizeRecordOrganizations(
-            addRecordPageUrl(
-              enrichRecordResources(record, sampleLimit ?? 3),
-              env.FINNA_UI_BASE,
+          summarizeOrganizations(
+            normalizeRecordOrganizations(
+              addRecordPageUrl(
+                enrichRecordResources(record, sampleLimit ?? 3),
+                env.FINNA_UI_BASE,
+              ),
             ),
           ),
         );

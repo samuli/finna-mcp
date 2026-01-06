@@ -112,6 +112,10 @@ describe('worker', () => {
               images: ['/Cover/Show?id=1'],
               onlineUrls: [{ url: 'https://example.com/file.pdf', label: 'PDF' }],
               urls: [{ url: 'https://example.com/page', label: 'Page' }],
+              buildings: [
+                { value: '0/TEST/', translated: 'Test Library' },
+                { value: '1/TEST/a/', translated: 'Branch A' },
+              ],
             },
           ],
         }),
@@ -145,6 +149,12 @@ describe('worker', () => {
       image: 1,
       pdf: 1,
       external: 1,
+    });
+    expect(payload.result.records[0].organization).toEqual({
+      primary: 'Test Library',
+      code: '0/TEST/',
+      locations: 1,
+      note: 'Use get_record for the full organization list.',
     });
     expect(payload.result.records[0].resourceSamples.image[0].url).toBe(
       'https://api.finna.fi/Cover/Show?id=1',
