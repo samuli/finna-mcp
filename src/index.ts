@@ -70,6 +70,11 @@ const SEARCH_SORT_OPTIONS = [
 const SEARCH_MODE_OPTIONS = ['simple', 'advanced'] as const;
 const ADVANCED_OPERATOR_OPTIONS = ['AND', 'OR'] as const;
 
+// Output limits for derived fields
+const LINKS_LIMIT = 3;
+const CREATORS_LIMIT = 5;
+const IMAGE_LIMIT = 2;
+
 const SearchRecordsArgs = z.object({
   query: z.string().default(''),
   type: z.string().default('AllFields'),
@@ -345,6 +350,26 @@ const COMPACT_SEARCH_API_FIELDS = [
   'recordUrl',
 ];
 
+const FULL_RECORD_FIELDS = [
+  'id',
+  'title',
+  'recordUrl',
+  'formats',
+  'year',
+  'images',
+  'onlineUrls',
+  'urls',
+  'organizations',
+  'subjects',
+  'genres',
+  'series',
+  'authors',
+  'nonPresenterAuthors',
+  'publishers',
+  'summary',
+  'measurements',
+];
+
 function normalizeRequestedFields(fields: string[]): { apiFields: string[]; outputFields: string[] } {
   const apiFields: string[] = [];
   const outputFields: string[] = [];
@@ -439,15 +464,11 @@ function buildOrganizationSummary(record: Record<string, unknown>): Record<strin
   const primary = organizations[0];
   const label =
     primary && typeof primary === 'object'
-      ? String((primary as { name?: unknown; translated?: unknown; label?: unknown }).name ??
-          (primary as { name?: unknown; translated?: unknown; label?: unknown }).translated ??
-          (primary as { name?: unknown; translated?: unknown; label?: unknown }).label ??
-          '')
+      ? String((primary as { name?: unknown }).name ?? '')
       : '';
   const code =
     primary && typeof primary === 'object'
-      ? String((primary as { code?: unknown; value?: unknown }).code ??
-          (primary as { code?: unknown; value?: unknown }).value ?? '')
+      ? String((primary as { code?: unknown }).code ?? '')
       : '';
   const locationCount = Math.max(organizations.length - 1, 0);
   return {
@@ -690,16 +711,13 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
       : records.map((record) =>
           normalizeRecordOrganizations(addRecordPageUrl(record, env.FINNA_UI_BASE)),
         );
-  const linksLimit = 3;
-  const creatorsLimit = 5;
-  const imageLimit = 2;
   const compacted = useCompactOutput
     ? normalized.map((record) =>
-        buildCompactSearchRecord(record, { linksLimit, creatorsLimit, imageLimit }),
+        buildCompactSearchRecord(record, { linksLimit: LINKS_LIMIT, creatorsLimit: CREATORS_LIMIT, imageLimit: IMAGE_LIMIT }),
       )
     : normalized.map((record) =>
         pickFields(
-          applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit, imageLimit }),
+          applyDerivedFields(record, outputFields, { linksLimit: LINKS_LIMIT, creatorsLimit: CREATORS_LIMIT, imageLimit: IMAGE_LIMIT }),
           outputFields,
         ),
       );
@@ -734,27 +752,7 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
   const { ids, lng, fields } = parsed.data;
-  // Default to full metadata
-  const fullFields = [
-    'id',
-    'title',
-    'recordUrl',
-    'formats',
-    'year',
-    'images',
-    'onlineUrls',
-    'urls',
-    'organizations',
-    'subjects',
-    'genres',
-    'series',
-    'authors',
-    'nonPresenterAuthors',
-    'publishers',
-    'summary',
-    'measurements',
-  ];
-  const selectedFields = fields ?? fullFields;
+  const selectedFields = fields ?? FULL_RECORD_FIELDS;
   const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
 
   const url = buildRecordUrl({
@@ -771,12 +769,9 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
       addRecordPageUrl(enrichRecordResources(record), env.FINNA_UI_BASE),
     ),
   );
-  const linksLimit = 3;
-  const creatorsLimit = 5;
-  const imageLimit = 2;
   const derived = enriched.map((record) =>
     pickFields(
-      applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit, imageLimit }),
+      applyDerivedFields(record, outputFields, { linksLimit: LINKS_LIMIT, creatorsLimit: CREATORS_LIMIT, imageLimit: IMAGE_LIMIT }),
       outputFields,
     ),
   );
