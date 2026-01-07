@@ -71,9 +71,9 @@ export function buildRecordUrl(params: RecordParams): string {
   return url.toString();
 }
 
-export function enrichRecordResources(record: Record<string, unknown>, sampleLimit: number) {
+export function enrichRecordResources(record: Record<string, unknown>) {
   const withImages = normalizeRecordImages(record);
-  const { resourceCounts, resourceSamples } = summarizeResources(withImages, sampleLimit);
+  const { resourceCounts, resourceSamples } = summarizeResources(withImages, 3);
   const contributors = buildContributors(record);
   const merged = {
     ...withImages,
@@ -88,9 +88,8 @@ export function enrichRecordResources(record: Record<string, unknown>, sampleLim
 
 export function extractResourcesFromRecord(
   record: Record<string, unknown>,
-  sampleLimit: number,
 ) {
-  const { resources, resourceCounts } = summarizeResources(record, sampleLimit, true);
+  const { resources, resourceCounts } = summarizeResources(record, 3, true);
   const merged = {
     id: record.id,
     resourceCounts,

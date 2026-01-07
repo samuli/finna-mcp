@@ -92,7 +92,6 @@ const SearchRecordsArgs = z.object({
   facets: z.array(z.string()).optional(),
   facet_limit: z.number().int().min(1).max(200).optional(),
   fields: z.array(z.string()).optional(),
-  sampleLimit: z.number().int().min(1).max(5).optional(),
 });
 
 const GetRecordArgs = z.object({
@@ -203,11 +202,6 @@ const ListToolsResponse = {
             items: { type: 'string' },
             description:
               'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, imageTemplate, imageCount, recordUrl. Use get_record for full organizations list.',
-          },
-          sampleLimit: {
-            type: 'number',
-            description:
-              'Max number of example resource links per record.',
           },
         },
       },
@@ -762,7 +756,6 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     facets,
     facet_limit,
     fields,
-    sampleLimit,
   } = parsed.data;
   const useCompactOutput =
     fields === undefined &&
@@ -807,7 +800,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
       : records.map((record) =>
           normalizeRecordOrganizations(addRecordPageUrl(record, env.FINNA_UI_BASE)),
         );
-  const linksLimit = sampleLimit ?? 3;
+  const linksLimit = 3;
   const creatorsLimit = 5;
   const imageLimit = 2;
   const compacted = useCompactOutput
@@ -871,7 +864,7 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   const records = getRecords(payload);
   const enriched = records.map((record) =>
     normalizeRecordOrganizations(
-      addRecordPageUrl(enrichRecordResources(record, 3), env.FINNA_UI_BASE),
+      addRecordPageUrl(enrichRecordResources(record), env.FINNA_UI_BASE),
     ),
   );
   const linksLimit = 3;
