@@ -95,6 +95,101 @@ export function extractResourcesFromRecord(
   return pruneEmptyFields(merged);
 }
 
+type CompactLink = {
+  url: string;
+  type?: string;
+  label?: string;
+};
+
+export function buildCompactLinks(
+  record: Record<string, unknown>,
+  limit: number,
+): { links: CompactLink[]; total: number } {
+  const resources = collectResources(record);
+  const seen = new Set<string>();
+  const links: CompactLink[] = [];
+  for (const resource of resources) {
+    const url = resource.url;
+    if (!url || seen.has(url)) {
+      continue;
+    }
+    seen.add(url);
+    const link: CompactLink = { url };
+    if (resource.type && resource.type !== 'external') {
+      link.type = resource.type;
+    }
+    if (resource.label) {
+      link.label = resource.label ?? undefined;
+    }
+    links.push(link);
+  }
+  const total = links.length;
+  if (limit > 0 && links.length > limit) {
+    return { links: links.slice(0, limit), total };
+  }
+  return { links, total };
+}
+
+export function buildCompactCreators(
+  record: Record<string, unknown>,
+  limit: number,
+): { creators: string[]; total: number } {
+  const contributors = buildContributors(record);
+  const creators: string[] = [];
+  for (const contributor of contributors) {
+    if (!contributor.name) {
+      continue;
+    }
+    const label = contributor.role ? `${contributor.name} (${contributor.role})` : contributor.name;
+    creators.push(label);
+    if (limit > 0 && creators.length >= limit) {
+      break;
+    }
+  }
+  return { creators, total: contributors.length };
+}
+
+export function resolveFormatSummary(
+  record: Record<string, unknown>,
+): { format?: string; type?: string } {
+  const formats = Array.isArray(record.formats) ? record.formats : [];
+  if (formats.length === 0) {
+    return {};
+  }
+  let formatCode: string | undefined;
+  let typeLabel: string | undefined;
+  for (const entry of formats) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const value = typeof (entry as { value?: unknown }).value === 'string'
+      ? String((entry as { value?: unknown }).value)
+      : '';
+    const translated = typeof (entry as { translated?: unknown }).translated === 'string'
+      ? String((entry as { translated?: unknown }).translated)
+      : '';
+    if (!formatCode && value.startsWith('0/')) {
+      formatCode = value;
+    }
+    if (translated) {
+      typeLabel = translated;
+    }
+  }
+  if (!formatCode) {
+    const fallback = formats[0];
+    if (fallback && typeof fallback === 'object') {
+      const value = (fallback as { value?: unknown }).value;
+      if (typeof value === 'string') {
+        formatCode = value;
+      }
+    }
+  }
+  return {
+    format: formatCode || undefined,
+    type: typeLabel || undefined,
+  };
+}
+
 type Resource = {
   type: string;
   url: string;

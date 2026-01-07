@@ -112,6 +112,10 @@ describe('worker', () => {
               images: ['/Cover/Show?id=1'],
               onlineUrls: [{ url: 'https://example.com/file.pdf', label: 'PDF' }],
               urls: [{ url: 'https://example.com/page', label: 'Page' }],
+              formats: [
+                { value: '0/Image/', translated: 'Kuva' },
+                { value: '1/Image/Photo/', translated: 'Kuva' },
+              ],
               buildings: [
                 { value: '0/TEST/', translated: 'Test Library' },
                 { value: '1/TEST/a/', translated: 'Branch A' },
@@ -145,20 +149,16 @@ describe('worker', () => {
 
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
-    expect(payload.result.records[0].resourceCounts).toEqual({
-      image: 1,
-      pdf: 1,
-      external: 1,
-    });
+    expect(payload.result.records[0].format).toBe('0/Image/');
+    expect(payload.result.records[0].type).toBe('Kuva');
+    expect(payload.result.records[0].links.length).toBe(3);
     expect(payload.result.records[0].organization).toEqual({
       primary: 'Test Library',
       code: '0/TEST/',
       locations: 1,
       note: 'Use get_record for the full organization list.',
     });
-    expect(payload.result.records[0].resourceSamples.image[0].url).toBe(
-      'https://api.finna.fi/Cover/Show?id=1',
-    );
+    expect(payload.result.records[0].links[0].url).toBe('https://api.finna.fi/Cover/Show?id=1');
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('lookfor=sibelius');
@@ -453,7 +453,7 @@ describe('worker', () => {
 
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
-    expect(payload.result.records[0].resourceCounts.audio).toBe(1);
+    expect(payload.result.records[0].id).toBe('a.1');
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('id%5B%5D=a.1');
     expect(calledUrl).toContain('field%5B%5D=rawData');
@@ -490,8 +490,8 @@ describe('worker', () => {
 
     await worker.fetch(request, baseEnv);
     const calledUrl = String(mockFetch.mock.calls[0][0]);
-    expect(calledUrl).toContain('field%5B%5D=recordUrl');
-    expect(calledUrl).not.toContain('field%5B%5D=buildings');
+    expect(calledUrl).not.toContain('field%5B%5D=recordUrl');
+    expect(calledUrl).toContain('field%5B%5D=buildings');
   });
 
   it('get_record can include resource list', async () => {

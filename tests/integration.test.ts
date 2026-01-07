@@ -60,8 +60,7 @@ suite('integration (local wrangler)', () => {
     const payload = await response.json();
     expect(Array.isArray(payload.result.records)).toBe(true);
     if (payload.result.records.length > 0) {
-      expect(payload.result.records[0].resourceCounts).toBeTruthy();
-      expect(payload.result.records[0].resourceSamples).toBeTruthy();
+      expect(Array.isArray(payload.result.records[0].links)).toBe(true);
     }
   });
 
@@ -90,9 +89,7 @@ suite('integration (local wrangler)', () => {
     if (!record) {
       return;
     }
-    const formats = Array.isArray(record.formats) ? record.formats : [];
-    const hasImage = formats.some((format: { value?: string }) => format?.value === '0/Image/');
-    expect(hasImage).toBe(true);
+    expect(record.format).toBe('0/Image/');
   });
 
   it('search_records format filter supports multiple values (OR)', async () => {
@@ -120,11 +117,7 @@ suite('integration (local wrangler)', () => {
     if (!record) {
       return;
     }
-    const formats = Array.isArray(record.formats) ? record.formats : [];
-    const hasMatch = formats.some((format: { value?: string }) =>
-      format?.value === '0/Image/' || format?.value === '0/Video/',
-    );
-    expect(hasMatch).toBe(true);
+    expect(['0/Image/', '0/Video/'].includes(record.format)).toBe(true);
   });
 
   it('get_record returns details for a returned id', async () => {

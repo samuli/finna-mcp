@@ -3,7 +3,10 @@ import {
   buildSearchUrl,
   buildRecordUrl,
   extractResourcesFromRecord,
+  buildCompactCreators,
+  buildCompactLinks,
   enrichRecordResources,
+  resolveFormatSummary,
   type FilterInput,
 } from './finna.js';
 
@@ -138,7 +141,7 @@ const ListToolsResponse = {
           fields_preset: {
             type: 'string',
             description:
-              'Field preset: "compact" (ids + title + urls), "media" (adds images/external resources), "full" (adds richer metadata). Overrides default fields unless fields is set.',
+              'Field preset: "compact" (id/title/type/format/year/creators/organization/links/recordUrl), "media" (same as compact), "full" (adds richer metadata). Overrides default fields unless fields is set.',
           },
           page: { type: 'number' },
           limit: { type: 'number', description: 'Number of results per page (0-100). To count records, set limit=0 and read resultCount.' },
@@ -198,7 +201,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, formats, authors, organization (summary), languages, year, images, onlineUrls, urls, recordUrl, contributors. Use get_record for full organizations list.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, type, format, year, creators, organization (summary), links, recordUrl. Use get_record for full organizations list.',
           },
           sampleLimit: {
             type: 'number',
@@ -219,13 +222,13 @@ const ListToolsResponse = {
           fields_preset: {
             type: 'string',
             description:
-              'Field preset: "compact" (ids + title + urls), "media" (adds images/onlineUrls), "full" (adds richer metadata).',
+              'Field preset: "compact" (id/title/type/format/year/creators/organization/links/recordUrl), "media" (adds images/onlineUrls), "full" (adds richer metadata).',
           },
           fields: {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, formats, organizations, subjects, genres, series, authors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements, contributors.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, formats, organizations, subjects, genres, series, authors, nonPresenterAuthors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements.',
           },
           includeRawData: {
             type: 'boolean',
@@ -372,7 +375,20 @@ const DEFAULT_SEARCH_FIELDS = [
   'formats',
   'authors',
   'organizations',
-  'languages',
+  'year',
+  'images',
+  'onlineUrls',
+  'urls',
+  'recordUrl',
+];
+
+const COMPACT_SEARCH_API_FIELDS = [
+  'id',
+  'title',
+  'formats',
+  'authors',
+  'nonPresenterAuthors',
+  'organizations',
   'year',
   'images',
   'onlineUrls',
@@ -425,6 +441,30 @@ function normalizeRequestedFields(fields: string[]): { apiFields: string[]; outp
       outputFields.push('organizations');
       continue;
     }
+    if (field === 'organization') {
+      apiFields.push('buildings');
+      outputFields.push('organization');
+      continue;
+    }
+    if (field === 'creators') {
+      apiFields.push('authors', 'nonPresenterAuthors');
+      outputFields.push('creators');
+      continue;
+    }
+    if (field === 'links') {
+      apiFields.push('images', 'onlineUrls', 'urls');
+      outputFields.push('links');
+      continue;
+    }
+    if (field === 'type' || field === 'format') {
+      apiFields.push('formats');
+      outputFields.push(field);
+      continue;
+    }
+    if (field === 'recordUrl') {
+      outputFields.push('recordUrl');
+      continue;
+    }
     apiFields.push(field);
     outputFields.push(field);
   }
@@ -452,13 +492,13 @@ function normalizeRecordOrganizations(record: Record<string, unknown>): Record<s
   };
 }
 
-function summarizeOrganizations(record: Record<string, unknown>): Record<string, unknown> {
+function buildOrganizationSummary(record: Record<string, unknown>): Record<string, unknown> | null {
   if (!record || typeof record !== 'object') {
-    return record;
+    return null;
   }
   const organizations = record.organizations;
   if (!Array.isArray(organizations) || organizations.length === 0) {
-    return record;
+    return null;
   }
   const primary = organizations[0];
   const label =
@@ -472,18 +512,130 @@ function summarizeOrganizations(record: Record<string, unknown>): Record<string,
       ? String((primary as { value?: unknown }).value ?? '')
       : '';
   const locationCount = Math.max(organizations.length - 1, 0);
-  const summary = {
+  return {
     primary: label || undefined,
     code: code || undefined,
     locations: locationCount || undefined,
     note: 'Use get_record for the full organization list.',
   };
+}
+
+function summarizeOrganizations(record: Record<string, unknown>): Record<string, unknown> {
+  if (!record || typeof record !== 'object') {
+    return record;
+  }
+  const summary = buildOrganizationSummary(record);
+  if (!summary) {
+    return record;
+  }
   const { organizations: _omit, ...rest } = record;
   void _omit;
   return {
     ...rest,
     organization: summary,
   };
+}
+
+function pruneEmptyFields(record: Record<string, unknown>): Record<string, unknown> {
+  const output: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        continue;
+      }
+      output[key] = value;
+      continue;
+    }
+    if (value && typeof value === 'object') {
+      if (Object.keys(value as Record<string, unknown>).length === 0) {
+        continue;
+      }
+      output[key] = value;
+      continue;
+    }
+    if (value === null || value === undefined) {
+      continue;
+    }
+    output[key] = value;
+  }
+  return output;
+}
+
+function buildCompactSearchRecord(
+  record: Record<string, unknown>,
+  options: { linksLimit: number; creatorsLimit: number },
+): Record<string, unknown> {
+  const summarized = summarizeOrganizations(record);
+  const { type, format } = resolveFormatSummary(record);
+  const creatorsResult = buildCompactCreators(record, options.creatorsLimit);
+  const linksResult = buildCompactLinks(record, options.linksLimit);
+  const output: Record<string, unknown> = {
+    id: summarized.id,
+    title: summarized.title,
+    type,
+    format,
+    year: summarized.year,
+    creators: creatorsResult.creators,
+    ...(creatorsResult.total > creatorsResult.creators.length
+      ? { creatorsTotal: creatorsResult.total }
+      : {}),
+    organization: (summarized as { organization?: unknown }).organization,
+    links: linksResult.links,
+    ...(linksResult.total > linksResult.links.length ? { linksTotal: linksResult.total } : {}),
+    recordUrl: summarized.recordUrl,
+  };
+  return pruneEmptyFields(output);
+}
+
+function applyDerivedFields(
+  record: Record<string, unknown>,
+  outputFields: string[],
+  options: { linksLimit: number; creatorsLimit: number },
+): Record<string, unknown> {
+  let derived = record;
+  if (outputFields.includes('organization')) {
+    const summary = buildOrganizationSummary(record);
+    if (summary) {
+      derived = { ...derived, organization: summary };
+    }
+  }
+  if (outputFields.includes('creators')) {
+    const creatorsResult = buildCompactCreators(record, options.creatorsLimit);
+    derived = {
+      ...derived,
+      creators: creatorsResult.creators,
+      ...(creatorsResult.total > creatorsResult.creators.length
+        ? { creatorsTotal: creatorsResult.total }
+        : {}),
+    };
+  }
+  if (outputFields.includes('links')) {
+    const linksResult = buildCompactLinks(record, options.linksLimit);
+    derived = {
+      ...derived,
+      links: linksResult.links,
+      ...(linksResult.total > linksResult.links.length ? { linksTotal: linksResult.total } : {}),
+    };
+  }
+  if (outputFields.includes('format') || outputFields.includes('type')) {
+    const summary = resolveFormatSummary(record);
+    derived = {
+      ...derived,
+      ...(outputFields.includes('format') && summary.format ? { format: summary.format } : {}),
+      ...(outputFields.includes('type') && summary.type ? { type: summary.type } : {}),
+    };
+  }
+  return derived;
+}
+
+function pickFields(record: Record<string, unknown>, outputFields: string[]): Record<string, unknown> {
+  const picked: Record<string, unknown> = {};
+  for (const field of outputFields) {
+    if (field in record) {
+      picked[field] = (record as Record<string, unknown>)[field];
+    }
+  }
+  return pruneEmptyFields(picked);
 }
 
 function appendResourcesList(record: Record<string, unknown>, limit: number): Record<string, unknown> {
@@ -515,14 +667,23 @@ function appendResourcesList(record: Record<string, unknown>, limit: number): Re
 }
 
 const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
-  compact: ['id', 'title', 'recordUrl', 'urls', 'onlineUrls'],
-  media: ['id', 'title', 'recordUrl', 'images', 'urls', 'onlineUrls', 'formats', 'languages', 'year'],
+  compact: ['id', 'title', 'type', 'format', 'year', 'creators', 'organization', 'links', 'recordUrl'],
+  media: [
+    'id',
+    'title',
+    'type',
+    'format',
+    'year',
+    'creators',
+    'organization',
+    'links',
+    'recordUrl',
+  ],
   full: [
     'id',
     'title',
     'recordUrl',
     'formats',
-    'languages',
     'year',
     'images',
     'onlineUrls',
@@ -531,6 +692,7 @@ const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
     'genres',
     'series',
     'authors',
+    'nonPresenterAuthors',
     'publishers',
     'summary',
     'measurements',
@@ -538,7 +700,7 @@ const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
 };
 
 const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
-  compact: ['id', 'title', 'recordUrl', 'urls', 'onlineUrls'],
+  compact: ['id', 'title', 'type', 'format', 'year', 'creators', 'organization', 'links', 'recordUrl'],
   media: [
     'id',
     'title',
@@ -547,7 +709,6 @@ const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
     'urls',
     'onlineUrls',
     'formats',
-    'languages',
     'year',
   ],
   full: [
@@ -555,7 +716,6 @@ const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
     'title',
     'recordUrl',
     'formats',
-    'languages',
     'year',
     'images',
     'onlineUrls',
@@ -565,6 +725,7 @@ const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
     'genres',
     'series',
     'authors',
+    'nonPresenterAuthors',
     'publishers',
     'summary',
     'measurements',
@@ -597,6 +758,9 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     fields,
     sampleLimit,
   } = parsed.data;
+  const useCompactOutput =
+    fields === undefined &&
+    (fields_preset === undefined || fields_preset === 'compact' || fields_preset === 'media');
   let normalizedFilters = normalizeFilters(filters);
   normalizedFilters = mergeTopLevelFilters(normalizedFilters, {
     available_online,
@@ -614,7 +778,9 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   );
   normalizedFilters = normalizedBuilding.filters;
   const normalizedSort = normalizeSort(sort);
-  const selectedFields = fields ?? resolveSearchFieldsPreset(fields_preset);
+  const selectedFields = useCompactOutput
+    ? COMPACT_SEARCH_API_FIELDS
+    : fields ?? resolveSearchFieldsPreset(fields_preset);
   const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
 
   const url = buildSearchUrl({
@@ -634,29 +800,34 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
 
   const payload = await fetchJson(url);
   const records = limit === 0 ? [] : getRecords(payload);
-  const enriched =
+  const normalized =
     limit === 0
       ? []
       : records.map((record) =>
-          summarizeOrganizations(
-            normalizeRecordOrganizations(
-              addRecordPageUrl(
-                enrichRecordResources(record, sampleLimit ?? 3),
-                env.FINNA_UI_BASE,
-              ),
-            ),
-          ),
+          normalizeRecordOrganizations(addRecordPageUrl(record, env.FINNA_UI_BASE)),
         );
+  const linksLimit = sampleLimit ?? 3;
+  const creatorsLimit = 5;
+  const compacted = useCompactOutput
+    ? normalized.map((record) =>
+        buildCompactSearchRecord(record, { linksLimit, creatorsLimit }),
+      )
+    : normalized.map((record) =>
+        pickFields(
+          applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit }),
+          outputFields,
+        ),
+      );
   const cleaned =
     outputFields && !outputFields.includes('recordUrl')
-      ? enriched.map((record) => stripRecordUrl(record))
-      : enriched;
+      ? compacted.map((record) => stripRecordUrl(record))
+      : compacted;
   const meta = buildSearchMeta({
     query,
     search_mode,
     fields_preset,
     fields: outputFields,
-    fieldsProvided: fields !== undefined,
+    fieldsProvided: fields !== undefined || (fields_preset !== undefined && !useCompactOutput),
     limit,
     resultCount: payload.resultCount,
     records: cleaned,
@@ -695,6 +866,10 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
     apiFields.push('rawData');
     outputFields.push('rawData');
   }
+  if (includeResources) {
+    apiFields.push('images', 'onlineUrls', 'urls');
+    outputFields.push('resources', 'resourcesSummary');
+  }
 
   const url = buildRecordUrl({
     apiBase: env.FINNA_API_BASE,
@@ -716,10 +891,18 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   const withResources = includeResources
     ? enriched.map((record) => appendResourcesList(record, resourcesLimit ?? 10))
     : enriched;
+  const linksLimit = sampleLimit ?? 5;
+  const creatorsLimit = 5;
+  const derived = withResources.map((record) =>
+    pickFields(
+      applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit }),
+      outputFields,
+    ),
+  );
   const cleaned =
     outputFields && !outputFields.includes('recordUrl')
-      ? withResources.map((record) => stripRecordUrl(record))
-      : withResources;
+      ? derived.map((record) => stripRecordUrl(record))
+      : derived;
 
   return json({
     result: {
@@ -1367,16 +1550,16 @@ Organizations have hierarchical codes:
 
 **For filtering, always use the VALUE string (e.g., "0/Helmet/"), NOT the label or path.**
 
-### Authors/People
-- **authors.primary** - Main creators (book author, photographer, composer)
-- **authors.secondary** - Supporting creators (translator, editor, illustrator)
-  - Includes role information: "translator", "kuvittaja" (illustrator)
-- **authors.corporate** - Institutional authors (publishers, organizations)
-- **contributors** - Additional people involved (rare, format-specific)
-- **nonPresenterAuthors** - Advanced field, rarely needed
+### Creators/People
+- **creators** - Merged, compact creator list (name + role when available)
+- **authors** - Detailed creator entries (advanced)
+- **nonPresenterAuthors** - Additional creator entries (advanced)
+Note: creators list is capped in compact results (default 5).
 
 ### Content
 - **title** - Main title of the work
+- **type** - Human-readable type label (e.g., "Kirja", "CD")
+- **format** - Top-level format code (e.g., "0/Book/")
 - **summary** - Description or abstract (array, may have multiple entries)
 - **subjects** - Topic keywords and classifications
 - **genres** - Content type (fiction, documentary, etc.)
@@ -1388,15 +1571,14 @@ Organizations have hierarchical codes:
 - **series** - Series name if part of a collection
 
 ### Physical/Technical
-- **format** - Material type hierarchy (e.g., ["0/Book/", "1/Book/eBook/"])
 - **measurements** - Size, duration, dimensions (format-specific)
 - **languages** - ISO language codes (e.g., ["fin", "swe"])
 
 ### Access
-- **organizations** - Holding institutions
+- **organization** - Compact organization summary
+- **organizations** - Full organization list (get_record)
 - **recordUrl** - Link to full Finna record
-- **onlineUrls** - Direct access to digital content
-- **images** - Thumbnail/preview images
+- **links** - Unified list of online resources (pdf/image/audio/video/external)
 
 ## Troubleshooting
 
