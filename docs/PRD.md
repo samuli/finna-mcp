@@ -214,6 +214,21 @@ Use these in `filters.include.format` when narrowing by type:
 - `fields_preset="compact"` returns minimal fields (observed: `id`, `title`, `recordUrl`).
 - `fields_preset="full"` returns richer metadata including `authors`, `buildings`, `genres`, `publishers`, etc.
 
+## Re-evaluation (2026-01-07)
+### Queries
+- `search_records` query="Kalevala", limit=3, lng=fi
+- `search_records` query="Helsinki", available_online=true, format="0/Image/", year="1900-1950", limit=3, lng=fi
+- `list_organizations` query="Seinäjoki", lng=fi
+- `get_record` ids=[<first Kalevala hit>], lng=fi
+- `search_records` query="Helsinki", facets=["format"], facet_limit=10, limit=1, lng=fi
+
+### Observations
+- Compact `search_records` returns the minimal schema and prunes empty fields. Typical fields seen: `id`, `title`, `type`, `format`, `year`, `organization`, `recordUrl` (description/creators/links omitted when empty).
+- Online image search returns compact records with `links`, `imageTemplate`, and `imageCount` as expected.
+- `get_record` now returns the same compact shape as `search_records` (by default), simplifying follow-up fetches by id.
+- `facet_limit` works: format facet list capped to 10 values when requested.
+- `list_organizations` query returns a narrowed facet list (Seinäjoki returns 1 entry).
+
 ## Review Feedback (2026-01-06)
 ### Tool Output Compatibility: `content` vs `structuredContent`
 - Reviewer reports that their MCP client only reads `content` (human-readable) and ignores `structuredContent`. This caused missing IDs/records even when `fields` were requested (e.g., `search_records(fields=["id","title","authors"], limit=3)` returned only a summary string).

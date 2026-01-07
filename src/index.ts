@@ -90,6 +90,7 @@ const SearchRecordsArgs = z.object({
   year: z.union([z.string(), z.array(z.string())]).optional(),
   filters: FilterSchema,
   facets: z.array(z.string()).optional(),
+  facet_limit: z.number().int().min(1).max(200).optional(),
   fields: z.array(z.string()).optional(),
   sampleLimit: z.number().int().min(1).max(5).optional(),
 });
