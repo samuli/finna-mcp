@@ -69,19 +69,25 @@ curl 'https://finna.fi/AJAX/JSON?method=getItemStatuses' \
 - Provide opt-in flags for `fullRecord` and `rawData` with aggressive pruning.
 - Provide a dedicated `images` helper that expands `Cover/Show` relative paths to full URLs.
 
-### Common format codes (working list)
-Use these in `filters.include.format` when narrowing by type:
+### Common format codes (top-level only)
+**Important**: Only top-level format codes (0/...) are supported. Hierarchical codes like `0/Book/eBook/` are not discoverable via the API. Use top-level codes combined with keyword search for specificity.
+
+Top-level format codes (discover via `facets=["format"]`):
 - Book: `0/Book/`
 - Article: `0/Article/`
 - Journal: `0/Journal/`
-- Audio (generic): `0/Sound/`
-- Audio (music): `0/Sound/Music/`
+- Audio: `0/Sound/`
 - Video: `0/Video/`
 - Image: `0/Image/`
-- Image (photo): `0/Image/Photo/`
 - Map: `0/Map/`
-- Manuscript: `0/Manuscript/`
-- Thesis/Dissertation: `0/Thesis/`
+- Thesis: `0/Thesis/`
+- Musical Score: `0/MusicalScore/`
+- Document: `0/Document/`
+
+**Note**: For specific sub-types (e.g., e-books), use the top-level code with keyword search:
+```json
+{"format": "0/Book/", "query": "ebook"}
+```
 
 ### Organization identifiers (working notes)
 - Use `list_organizations` and then pass the returned **building** values into `filters.include.building`.
@@ -112,10 +118,11 @@ Use these in `filters.include.format` when narrowing by type:
 - Multi-term query: `search_records(search_mode="advanced", advanced_operator="AND", lookfor="deep learning algorithm")`
   - MCP `resultCount` matches API (2,061). Top IDs differ but overlap exists.
   - Advanced mode successfully expands terms into Finna’s advanced query parameters.
-- Organization lookup: `list_organizations(lookfor="Rauma")`
-  - MCP returns hierarchical results with nested nodes (`Satakirjastot > Rauma > Rauman pääkirjasto`).
-- Unfiltered org list: `list_organizations()`
-  - Response is pruned to 2 levels with `meta.pruned=true` and `meta.prunedDepth=2`.
+- Organization lookup: `list_organizations(query="Rauma")`
+  - MCP returns top-level organization codes with labels (e.g., `{"value": "0/SATAKIRJASTOT/", "label": "Satakirjastot"}`).
+  - Uses search API with `facets=["building"]` for reliable data fetching.
+- Unfiltered org list: `list_organizations(compact=true)`
+  - Returns ~226 top-level organizations with VALUE codes and labels.
 - Count books in a system: `search_records(limit=0, filters.include.building=["0/Helmet/"], filters.include.format=["0/Book/"])`
   - MCP `resultCount` matches API (586,769).
 - Record details + resources: `get_record(ids=[<id>])` and `extract_resources(ids=[<id>])`
@@ -131,34 +138,27 @@ Use these in `filters.include.format` when narrowing by type:
 
 ### Cons / limitations
 - Ranking differences vs API top hits (expected; may confuse comparisons).
-- `list_organizations` depends on Finna UI HTML; brittle if UI structure changes.
-- Unfiltered org list is still large even after pruning (many top-level items).
+- `list_organizations` returns only top-level codes (no hierarchical children).
 - No availability/holdings integration yet.
 - Local dev can surface upstream 502s; now returned as MCP errors but still visible.
 
 ### Improvements implemented after first evaluation
-- **list_organizations max_depth**: optional `max_depth` parameter to control hierarchy depth.
-  - Example: `list_organizations(max_depth=3)` returns 3 levels and sets `meta.prunedDepth=3`.
-
-### Re-evaluation after improvements
-- `list_organizations(max_depth=3)` now returns grandchildren while still pruning deeper nodes.
-  - `meta.pruned=true`, `meta.prunedDepth=3`, `meta.reason="max_depth"`.
+- **list_organizations rewritten** (2026-01-07): Now uses search API with `facets=["building"]` instead of web scraping.
+  - Returns only top-level organization codes (0/...) for better LLM discoverability.
+  - Removed web scraping dependency and caching logic (~350 lines removed).
+  - Added `compact` mode for lean output (just `value` and `label` fields).
 
 ### Further improvement ideas
 - Auto-suggest `search_mode="advanced"` for multi-term free-text queries.
 - Add a holdings/availability tool (Finna holdings/JSON or per-org endpoints).
-- Provide an optional “compact” org list mode with top-level only + search hint.
 
 ## Suggested Next Improvements (prioritized)
 1. **Auto-advanced hinting**: if `lookfor` contains multiple terms, return a `meta.warning` suggesting `search_mode="advanced"` with `advanced_operator="AND"`; do not auto-switch to preserve semantics.
-2. **Compact org list mode**: return only top-level orgs with counts + a `meta.hint` to use `lookfor` or `include_paths` for deeper nodes.
-3. **Field presets for get_record**: mirror `fields_preset` in `get_record` so models can request compact/full without remembering field names.
-4. **Add org “path” only on demand**: keep default lean; ensure `include_paths` is explicit (already implemented).
-5. **Holdings/availability path**: investigate non-session endpoints or per-org APIs before reintroducing a holdings tool.
+2. **Field presets for get_record**: mirror `fields_preset` in `get_record` so models can request compact/full without remembering field names.
+3. **Holdings/availability path**: investigate non-session endpoints or per-org APIs before reintroducing a holdings tool.
 
 ## LLM UX Improvement Ideas (shortlist)
 - Add `fields_preset` for `search_records` so the model can request compact/full record shapes without memorizing field names.
-- Add `include_paths` for `list_organizations` to provide explicit org paths (e.g., “Satakirjastot / Rauma / Rauman pääkirjasto”).
 - Add a `search_mode` hint in tool docs so multi-term queries use advanced mode.
 
 ## LLM UX Improvements Implemented (2026-01-06)
@@ -166,15 +166,24 @@ Use these in `filters.include.format` when narrowing by type:
 - `fields_preset` added to `search_records` with presets:
   - `compact`: `id`, `title`, `description`, `type`, `format`, `year`, `creators`, `organization`, `links`, `recordUrl`
   - `full`: adds richer metadata (subjects, genres, series, authors, publishers, summary, measurements)
-- `include_paths` added to `list_organizations` to include a `path` label for each node.
 
 ### Re-evaluation (2026-01-06)
 - `search_records(fields_preset="compact")` returns a minimal set (observed: `id`, `title`, `recordUrl`). Result counts match API.
 - `search_records(fields_preset="full")` returns richer metadata beyond the compact set.
-- `list_organizations(include_paths=true)` adds path strings like:
-  - `Satakirjastot / Rauma`
-  - `Satakunnan ammattikorkeakoulu / Rauma`
-  - `Turun yliopisto / Rauman normaalikoulun kirjasto, vain Rauman oppilaille`
+
+## API Simplification (2026-01-07)
+### Major Changes
+- **list_organizations rewritten**: Now uses search API with `facets=["building"]` instead of web scraping
+  - Returns only top-level organization codes (0/...) for better LLM discoverability
+  - Removed ~350 lines of web scraping and label resolution code
+  - Added `compact` mode for lean output
+- **Format codes**: Only top-level codes (0/...) supported; hierarchical codes removed
+- **Documentation updated**: Tool schemas and help text now clarify VALUE code usage
+
+### Benefits
+- Better LLM discoverability (codes available via facets)
+- More reliable (no web scraping dependency)
+- Smaller codebase (~350 lines removed)
 
 ## Feature: Auto-advanced Hinting (2026-01-06)
 ### Change
