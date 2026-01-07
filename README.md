@@ -8,8 +8,8 @@ MCP server for [Finna](https://finna.fi) - Finnish library, archive, and museum 
 
 - **search_records**: Search with filters, facets, and field selection
 - **get_record**: Fetch full metadata by record ID
-- **list_organizations**: Browse library/museum hierarchy
-- **/spec**: Endpoint returning full tool schema
+- **list_organizations**: Browse organization hierarchy
+- **/spec**: Endpoint returning full tool schema (what the model sees)
 
 ## Deploy to Cloudflare Workers
 
@@ -19,6 +19,12 @@ Requires a Cloudflare account:
 npm install
 npm run deploy
 ```
+
+## Configure MCP client
+
+Add this URL to your MCP client (Claude Desktop, etc):
+`https://finna-mcp.<your-subdomain>.workers.dev/v1`
+ 
 
 ## Local Development
 
