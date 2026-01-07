@@ -77,7 +77,6 @@ const SearchRecordsArgs = z.object({
   type: z.string().default('AllFields'),
   search_mode: z.enum(SEARCH_MODE_OPTIONS).optional(),
   advanced_operator: z.enum(ADVANCED_OPERATOR_OPTIONS).optional(),
-  fields_preset: z.enum(FIELD_PRESET_OPTIONS).optional(),
   page: z.number().int().min(1).optional(),
   limit: z.number().int().min(0).max(100).optional(),
   sort: z.enum(SEARCH_SORT_OPTIONS).optional(),
@@ -123,7 +122,7 @@ const ListToolsResponse = {
           query: {
             type: 'string',
             description:
-              'Search keywords over metadata (Solr behind the scenes). Use short keywords, not long sentences. Not a full-text search. For multi-term OR/AND, use search_mode="advanced".',
+              'Search keywords over metadata (Solr behind the scenes). Use short keywords, not long sentences. For multi-term OR/AND, use search_mode="advanced".',
           },
           type: { type: 'string' },
           search_mode: {
@@ -133,11 +132,6 @@ const ListToolsResponse = {
           advanced_operator: {
             type: 'string',
             description: 'Operator for advanced mode: "AND" (default) or "OR".',
-          },
-          fields_preset: {
-            type: 'string',
-            description:
-              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "full" (adds richer metadata). Overrides default fields unless fields is set.',
           },
           page: { type: 'number' },
           limit: { type: 'number', description: 'Number of results per page (0-100). To count records, set limit=0 and read resultCount.' },
@@ -201,7 +195,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, imageCount, recordUrl. Use get_record for full organizations list.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, imageCount, recordUrl. Use get_record(ids=[...]) for full metadata.',
           },
         },
       },
@@ -344,19 +338,6 @@ export default {
   },
 };
 
-const DEFAULT_SEARCH_FIELDS = [
-  'id',
-  'title',
-  'formats',
-  'authors',
-  'organizations',
-  'year',
-  'images',
-  'onlineUrls',
-  'urls',
-  'recordUrl',
-];
-
 const COMPACT_SEARCH_API_FIELDS = [
   'id',
   'title',
@@ -385,14 +366,6 @@ const DEFAULT_RECORD_FIELDS = [
   'imageCount',
   'recordUrl',
 ];
-
-function resolveSearchFieldsPreset(preset?: string): string[] {
-  if (!preset) {
-    return [...DEFAULT_SEARCH_FIELDS];
-  }
-  const selected = SEARCH_FIELD_PRESETS[preset];
-  return selected ? [...selected] : [...DEFAULT_SEARCH_FIELDS];
-}
 
 function resolveGetRecordFieldsPreset(preset?: string): string[] {
   if (!preset) {
@@ -657,40 +630,6 @@ function buildDescription(
   return trimmed.length > max ? `${trimmed.slice(0, max).trim()}…` : trimmed;
 }
 
-const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
-  compact: [
-    'id',
-    'title',
-    'description',
-    'type',
-    'format',
-    'year',
-    'creators',
-    'organization',
-    'links',
-    'imageCount',
-    'recordUrl',
-  ],
-  full: [
-    'id',
-    'title',
-    'recordUrl',
-    'formats',
-    'year',
-    'images',
-    'onlineUrls',
-    'urls',
-    'subjects',
-    'genres',
-    'series',
-    'authors',
-    'nonPresenterAuthors',
-    'publishers',
-    'summary',
-    'measurements',
-  ],
-};
-
 const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
   compact: [
     'id',
@@ -736,7 +675,6 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     type,
     search_mode,
     advanced_operator,
-    fields_preset,
     page,
     limit,
     sort,
@@ -752,9 +690,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     facet_limit,
     fields,
   } = parsed.data;
-  const useCompactOutput =
-    fields === undefined &&
-    (fields_preset === undefined || fields_preset === 'compact');
+  const useCompactOutput = fields === undefined;
   let normalizedFilters = normalizeFilters(filters);
   normalizedFilters = mergeTopLevelFilters(normalizedFilters, {
     available_online,
@@ -768,7 +704,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   const normalizedSort = normalizeSort(sort);
   const selectedFields = useCompactOutput
     ? COMPACT_SEARCH_API_FIELDS
-    : fields ?? resolveSearchFieldsPreset(fields_preset);
+    : fields;
   const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
 
   const url = buildSearchUrl({
@@ -815,9 +751,8 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   const meta = buildSearchMeta({
     query,
     search_mode,
-    fields_preset,
     fields: outputFields,
-    fieldsProvided: fields !== undefined || (fields_preset !== undefined && !useCompactOutput),
+    fieldsProvided: fields !== undefined,
     limit,
     resultCount: payload.resultCount,
     records: cleaned,
@@ -1249,8 +1184,6 @@ function buildHelpPayload(): Record<string, unknown> {
 Finna.fi is a unified search across Finnish libraries, archives, and museums. It includes online items as well as material that may require on-site access.
 
 Note that this [MCP server](https://github.com/samuli/finna-mcp) is not an official Finna service.
-
-Search is keyword-based, NOT full-text search
 
 ## Usage examples
 1) Online images from an organization
@@ -1927,7 +1860,6 @@ function hasOnlineFilter(filters?: FilterInput): boolean {
 function buildSearchMeta(options: {
   query: string;
   search_mode?: string;
-  fields_preset?: string;
   fields?: string[] | null;
   fieldsProvided: boolean;
   limit?: number;
@@ -1942,14 +1874,13 @@ function buildSearchMeta(options: {
   const {
     query,
     search_mode,
-    fields_preset,
     fields,
     fieldsProvided,
     limit,
     resultCount,
     records,
   } = options;
-  const selectedFields = fields ?? resolveSearchFieldsPreset(fields_preset);
+  const selectedFields = fields ?? COMPACT_SEARCH_API_FIELDS;
   const resourceFields = new Set(['images', 'urls', 'onlineUrls', 'links']);
   const includesResourceFields =
     (!fieldsProvided && selectedFields.some((field) => resourceFields.has(field)));
@@ -1980,9 +1911,6 @@ function buildSearchMeta(options: {
   if (search_mode === 'advanced' && !looksMultiTerm(query)) {
     info.push('Advanced search used with a single term; simple mode may be faster.');
   }
-  if (fields_preset && fields && fields.length > 0) {
-    info.push('fields overrides fields_preset for returned fields.');
-  }
   if (typeof resultCount === 'number' && resultCount === 0) {
     warnings.push(
       'No results. Consider search_mode="advanced", loosening filters, or trying a shorter query.',
@@ -1995,7 +1923,7 @@ function buildSearchMeta(options: {
   }
   if (options.requestedOnline && includesResourceFields && records.length > 0 && !hasResourceData) {
     info.push(
-      'No online resources found in these records; try fields_preset="full" for more source-specific links.',
+      'No online resources found in these records; try get_record(ids=[...]) for full metadata.',
     );
   }
   if (options.extraWarning && options.extraWarning.length > 0) {
