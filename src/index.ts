@@ -141,7 +141,7 @@ const ListToolsResponse = {
           fields_preset: {
             type: 'string',
             description:
-              'Field preset: "compact" (id/title/type/format/year/creators/organization/links/recordUrl), "media" (same as compact), "full" (adds richer metadata). Overrides default fields unless fields is set.',
+              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "media" (same as compact), "full" (adds richer metadata). Overrides default fields unless fields is set.',
           },
           page: { type: 'number' },
           limit: { type: 'number', description: 'Number of results per page (0-100). To count records, set limit=0 and read resultCount.' },
@@ -201,7 +201,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, type, format, year, creators, organization (summary), links, recordUrl. Use get_record for full organizations list.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, recordUrl. Use get_record for full organizations list.',
           },
           sampleLimit: {
             type: 'number',
@@ -222,13 +222,13 @@ const ListToolsResponse = {
           fields_preset: {
             type: 'string',
             description:
-              'Field preset: "compact" (id/title/type/format/year/creators/organization/links/recordUrl), "media" (adds images/onlineUrls), "full" (adds richer metadata).',
+              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "media" (adds images/onlineUrls), "full" (adds richer metadata).',
           },
           fields: {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, formats, organizations, subjects, genres, series, authors, nonPresenterAuthors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, description, formats, organizations, subjects, genres, series, authors, nonPresenterAuthors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements.',
           },
           includeRawData: {
             type: 'boolean',
@@ -393,6 +393,7 @@ const COMPACT_SEARCH_API_FIELDS = [
   'images',
   'onlineUrls',
   'urls',
+  'summary',
   'recordUrl',
 ];
 
@@ -449,6 +450,11 @@ function normalizeRequestedFields(fields: string[]): { apiFields: string[]; outp
     if (field === 'creators') {
       apiFields.push('authors', 'nonPresenterAuthors');
       outputFields.push('creators');
+      continue;
+    }
+    if (field === 'description') {
+      apiFields.push('summary');
+      outputFields.push('description');
       continue;
     }
     if (field === 'links') {
@@ -569,12 +575,14 @@ function buildCompactSearchRecord(
   const { type, format } = resolveFormatSummary(record);
   const creatorsResult = buildCompactCreators(record, options.creatorsLimit);
   const linksResult = buildCompactLinks(record, options.linksLimit);
+  const description = buildDescription(record, { mode: 'sentence' });
   const output: Record<string, unknown> = {
     id: summarized.id,
     title: summarized.title,
     type,
     format,
     year: summarized.year,
+    description,
     creators: creatorsResult.creators,
     ...(creatorsResult.total > creatorsResult.creators.length
       ? { creatorsTotal: creatorsResult.total }
@@ -625,6 +633,12 @@ function applyDerivedFields(
       ...(outputFields.includes('type') && summary.type ? { type: summary.type } : {}),
     };
   }
+  if (outputFields.includes('description')) {
+    const description = buildDescription(record, { mode: 'short' });
+    if (description) {
+      derived = { ...derived, description };
+    }
+  }
   return derived;
 }
 
@@ -636,6 +650,30 @@ function pickFields(record: Record<string, unknown>, outputFields: string[]): Re
     }
   }
   return pruneEmptyFields(picked);
+}
+
+function buildDescription(
+  record: Record<string, unknown>,
+  options: { mode: 'sentence' | 'short' },
+): string | undefined {
+  const summary = (record as { summary?: unknown }).summary;
+  const text = Array.isArray(summary) ? summary.find((item) => typeof item === 'string') : undefined;
+  if (!text) {
+    return undefined;
+  }
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (options.mode === 'sentence') {
+    const match = trimmed.match(/^[^.!?]+[.!?]/);
+    if (match) {
+      return match[0].trim();
+    }
+    return trimmed.length > 200 ? `${trimmed.slice(0, 200).trim()}…` : trimmed;
+  }
+  const max = 600;
+  return trimmed.length > max ? `${trimmed.slice(0, max).trim()}…` : trimmed;
 }
 
 function appendResourcesList(record: Record<string, unknown>, limit: number): Record<string, unknown> {
@@ -667,10 +705,22 @@ function appendResourcesList(record: Record<string, unknown>, limit: number): Re
 }
 
 const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
-  compact: ['id', 'title', 'type', 'format', 'year', 'creators', 'organization', 'links', 'recordUrl'],
+  compact: [
+    'id',
+    'title',
+    'description',
+    'type',
+    'format',
+    'year',
+    'creators',
+    'organization',
+    'links',
+    'recordUrl',
+  ],
   media: [
     'id',
     'title',
+    'description',
     'type',
     'format',
     'year',
@@ -700,7 +750,18 @@ const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
 };
 
 const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
-  compact: ['id', 'title', 'type', 'format', 'year', 'creators', 'organization', 'links', 'recordUrl'],
+  compact: [
+    'id',
+    'title',
+    'description',
+    'type',
+    'format',
+    'year',
+    'creators',
+    'organization',
+    'links',
+    'recordUrl',
+  ],
   media: [
     'id',
     'title',
@@ -1558,6 +1619,7 @@ Note: creators list is capped in compact results (default 5).
 
 ### Content
 - **title** - Main title of the work
+- **description** - Short description (first sentence in compact output)
 - **type** - Human-readable type label (e.g., "Kirja", "CD")
 - **format** - Top-level format code (e.g., "0/Book/")
 - **summary** - Description or abstract (array, may have multiple entries)

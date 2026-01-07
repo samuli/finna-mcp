@@ -106,23 +106,28 @@ export function buildCompactLinks(
   limit: number,
 ): { links: CompactLink[]; total: number } {
   const resources = collectResources(record);
-  const seen = new Set<string>();
-  const links: CompactLink[] = [];
+  const seen = new Map<string, CompactLink>();
   for (const resource of resources) {
     const url = resource.url;
-    if (!url || seen.has(url)) {
+    if (!url) {
       continue;
     }
-    seen.add(url);
-    const link: CompactLink = { url };
+    const normalized = normalizeUrlForDedup(url);
+    if (seen.has(normalized.key)) {
+      continue;
+    }
+    const link: CompactLink = { url: normalized.url };
     if (resource.type && resource.type !== 'external') {
       link.type = resource.type;
     }
     if (resource.label) {
       link.label = resource.label ?? undefined;
     }
-    links.push(link);
+    seen.set(normalized.key, link);
   }
+  const links = Array.from(seen.values()).sort((a, b) => {
+    return resourceTypePriority(a.type) - resourceTypePriority(b.type);
+  });
   const total = links.length;
   if (limit > 0 && links.length > limit) {
     return { links: links.slice(0, limit), total };
@@ -140,7 +145,12 @@ export function buildCompactCreators(
     if (!contributor.name) {
       continue;
     }
-    const label = contributor.role ? `${contributor.name} (${contributor.role})` : contributor.name;
+    let role = contributor.role;
+    if (role) {
+      const split = role.split(/[,;/]/).map((entry) => entry.trim()).filter(Boolean);
+      role = split.length > 0 ? split[0] : role;
+    }
+    const label = role ? `${contributor.name} (${role})` : contributor.name;
     creators.push(label);
     if (limit > 0 && creators.length >= limit) {
       break;
@@ -324,6 +334,51 @@ function collectResources(record: Record<string, unknown>): Resource[] {
   }
 
   return items;
+}
+
+type NormalizedUrl = {
+  key: string;
+  url: string;
+};
+
+function normalizeUrlForDedup(url: string): NormalizedUrl {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    const host = parsed.host.toLowerCase();
+    const path = parsed.pathname.replace(/\/+$/, '');
+    const params = parsed.searchParams;
+    const kept = new URLSearchParams();
+    for (const [key, value] of params.entries()) {
+      if (key.toLowerCase().startsWith('utm_')) {
+        continue;
+      }
+      kept.append(key, value);
+    }
+    parsed.search = kept.toString() ? `?${kept.toString()}` : '';
+    const key = `${parsed.protocol}//${host}${path}${
+      parsed.search ? `?${kept.toString()}` : ''
+    }`;
+    return { key, url: parsed.toString() };
+  } catch {
+    const trimmed = url.trim();
+    return { key: trimmed, url: trimmed };
+  }
+}
+
+function resourceTypePriority(type?: string): number {
+  switch (type) {
+    case 'pdf':
+      return 1;
+    case 'image':
+      return 2;
+    case 'audio':
+      return 3;
+    case 'video':
+      return 4;
+    default:
+      return 5;
+  }
 }
 
 function takeSamples(resources: Resource[], sampleLimit: number) {

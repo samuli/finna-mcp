@@ -109,6 +109,7 @@ describe('worker', () => {
           records: [
             {
               id: 'test.1',
+              summary: ['A short description. Second sentence.'],
               images: ['/Cover/Show?id=1'],
               onlineUrls: [{ url: 'https://example.com/file.pdf', label: 'PDF' }],
               urls: [{ url: 'https://example.com/page', label: 'Page' }],
@@ -151,6 +152,7 @@ describe('worker', () => {
     const payload = await response.json();
     expect(payload.result.records[0].format).toBe('0/Image/');
     expect(payload.result.records[0].type).toBe('Kuva');
+    expect(payload.result.records[0].description).toBe('A short description.');
     expect(payload.result.records[0].links.length).toBe(3);
     expect(payload.result.records[0].organization).toEqual({
       primary: 'Test Library',
@@ -158,7 +160,8 @@ describe('worker', () => {
       locations: 1,
       note: 'Use get_record for the full organization list.',
     });
-    expect(payload.result.records[0].links[0].url).toBe('https://api.finna.fi/Cover/Show?id=1');
+    const linkUrls = payload.result.records[0].links.map((link: { url?: string }) => link?.url);
+    expect(linkUrls).toContain('https://api.finna.fi/Cover/Show?id=1');
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('lookfor=sibelius');
