@@ -98,6 +98,7 @@ Use these in `filters.include.format` when narrowing by type:
 - Default: do **not** request facets in `search_records`. Only include facets when explicitly needed (e.g., to discover building/format codes).
 - For `search_records` responses, strip `facets` from the returned payload unless the caller requested facets.
 - For `list_organizations`, keep facets (this tool exists purely to return facet values), but strip `href` and any unused fields.
+- When requesting hierarchical facets (e.g., `building`, `format`, `sector_str_mv`, `category_str_mv`), use `facet_limit` to cap the number of returned values (default 30).
 
 ### Open questions
 - Confirm where `record_format` is exposed (likely in `rawData`); use it to drive format-specific pruning.

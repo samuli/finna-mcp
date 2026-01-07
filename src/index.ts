@@ -196,7 +196,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-            'Facets to return (e.g., ["building", "format"]). If empty or omitted, no facets are returned. Note that facets (especially building) often returns lots of data.'
+            'Facets to return (e.g., ["building", "format"]). If empty or omitted, no facets are returned. Note that facets (especially building) often returns lots of data. Use facet_limit to cap hierarchical facet values.'
           },
           facet_limit: {
             type: 'number',
