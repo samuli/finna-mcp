@@ -2,7 +2,7 @@
 
 MCP server for [Finna](https://finna.fi) - Finnish library, archive, and museum search.
 
-> **Note**: This is not an official Finna project. Uses the [Finna API v1](https://api.finna.fi/v1).
+> **Note**: This is not an official Finna project. Uses the [Finna API](https://api.finna.fi/v1).
 
 ## Features
 
