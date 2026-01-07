@@ -228,7 +228,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, description, formats, organizations, subjects, genres, series, authors, nonPresenterAuthors, publishers, year, humanReadablePublicationDates, images, onlineUrls, urls, recordUrl, summary, measurements.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, recordUrl. Use fields_preset="full" for full metadata.',
           },
           includeRawData: {
             type: 'boolean',
@@ -400,21 +400,14 @@ const COMPACT_SEARCH_API_FIELDS = [
 const DEFAULT_RECORD_FIELDS = [
   'id',
   'title',
-  'formats',
-  'organizations',
-  'subjects',
-  'genres',
-  'series',
-  'authors',
-  'publishers',
+  'description',
+  'type',
+  'format',
   'year',
-  'humanReadablePublicationDates',
-  'images',
-  'onlineUrls',
-  'urls',
+  'creators',
+  'organization',
+  'links',
   'recordUrl',
-  'summary',
-  'measurements',
 ];
 
 function resolveSearchFieldsPreset(preset?: string): string[] {
@@ -921,7 +914,12 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
     resourcesLimit,
     sampleLimit,
   } = parsed.data;
-  const selectedFields = fields ? [...fields] : resolveGetRecordFieldsPreset(fields_preset);
+  const useCompactOutput = fields === undefined && fields_preset === undefined;
+  const selectedFields = fields
+    ? [...fields]
+    : useCompactOutput
+      ? [...DEFAULT_RECORD_FIELDS]
+      : resolveGetRecordFieldsPreset(fields_preset);
   const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
   if (includeRawData) {
     apiFields.push('rawData');
@@ -952,8 +950,8 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   const withResources = includeResources
     ? enriched.map((record) => appendResourcesList(record, resourcesLimit ?? 10))
     : enriched;
-  const linksLimit = sampleLimit ?? 5;
-  const creatorsLimit = 5;
+  const linksLimit = sampleLimit ?? 10;
+  const creatorsLimit = 20;
   const derived = withResources.map((record) =>
     pickFields(
       applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit }),
