@@ -201,7 +201,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, recordUrl. Use get_record for full organizations list.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, imageTemplate, imageCount, recordUrl. Use get_record for full organizations list.',
           },
           sampleLimit: {
             type: 'number',
@@ -407,6 +407,8 @@ const DEFAULT_RECORD_FIELDS = [
   'creators',
   'organization',
   'links',
+  'imageTemplate',
+  'imageCount',
   'recordUrl',
 ];
 
@@ -453,6 +455,10 @@ function normalizeRequestedFields(fields: string[]): { apiFields: string[]; outp
     if (field === 'links') {
       apiFields.push('images', 'onlineUrls', 'urls');
       outputFields.push('links');
+      continue;
+    }
+    if (field === 'imageTemplate' || field === 'imageCount') {
+      outputFields.push(field);
       continue;
     }
     if (field === 'type' || field === 'format') {
@@ -562,12 +568,15 @@ function pruneEmptyFields(record: Record<string, unknown>): Record<string, unkno
 
 function buildCompactSearchRecord(
   record: Record<string, unknown>,
-  options: { linksLimit: number; creatorsLimit: number },
+  options: { linksLimit: number; creatorsLimit: number; imageLimit: number },
 ): Record<string, unknown> {
   const summarized = summarizeOrganizations(record);
   const { type, format } = resolveFormatSummary(record);
   const creatorsResult = buildCompactCreators(record, options.creatorsLimit);
-  const linksResult = buildCompactLinks(record, options.linksLimit);
+  const linksResult = buildCompactLinks(record, {
+    limit: options.linksLimit,
+    imageLimit: options.imageLimit,
+  });
   const description = buildDescription(record, { mode: 'sentence' });
   const output: Record<string, unknown> = {
     id: summarized.id,
@@ -583,6 +592,8 @@ function buildCompactSearchRecord(
     organization: (summarized as { organization?: unknown }).organization,
     links: linksResult.links,
     ...(linksResult.total > linksResult.links.length ? { linksTotal: linksResult.total } : {}),
+    ...(linksResult.imageTemplate ? { imageTemplate: linksResult.imageTemplate } : {}),
+    ...(linksResult.imageCount ? { imageCount: linksResult.imageCount } : {}),
     recordUrl: summarized.recordUrl,
   };
   return pruneEmptyFields(output);
@@ -591,7 +602,7 @@ function buildCompactSearchRecord(
 function applyDerivedFields(
   record: Record<string, unknown>,
   outputFields: string[],
-  options: { linksLimit: number; creatorsLimit: number },
+  options: { linksLimit: number; creatorsLimit: number; imageLimit: number },
 ): Record<string, unknown> {
   let derived = record;
   if (outputFields.includes('organization')) {
@@ -611,11 +622,16 @@ function applyDerivedFields(
     };
   }
   if (outputFields.includes('links')) {
-    const linksResult = buildCompactLinks(record, options.linksLimit);
+    const linksResult = buildCompactLinks(record, {
+      limit: options.linksLimit,
+      imageLimit: options.imageLimit,
+    });
     derived = {
       ...derived,
       links: linksResult.links,
       ...(linksResult.total > linksResult.links.length ? { linksTotal: linksResult.total } : {}),
+      ...(linksResult.imageTemplate ? { imageTemplate: linksResult.imageTemplate } : {}),
+      ...(linksResult.imageCount ? { imageCount: linksResult.imageCount } : {}),
     };
   }
   if (outputFields.includes('format') || outputFields.includes('type')) {
@@ -708,6 +724,8 @@ const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
     'creators',
     'organization',
     'links',
+    'imageTemplate',
+    'imageCount',
     'recordUrl',
   ],
   media: [
@@ -720,6 +738,8 @@ const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
     'creators',
     'organization',
     'links',
+    'imageTemplate',
+    'imageCount',
     'recordUrl',
   ],
   full: [
@@ -753,6 +773,8 @@ const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
     'creators',
     'organization',
     'links',
+    'imageTemplate',
+    'imageCount',
     'recordUrl',
   ],
   media: [
@@ -862,13 +884,14 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
         );
   const linksLimit = sampleLimit ?? 3;
   const creatorsLimit = 5;
+  const imageLimit = 2;
   const compacted = useCompactOutput
     ? normalized.map((record) =>
-        buildCompactSearchRecord(record, { linksLimit, creatorsLimit }),
+        buildCompactSearchRecord(record, { linksLimit, creatorsLimit, imageLimit }),
       )
     : normalized.map((record) =>
         pickFields(
-          applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit }),
+          applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit, imageLimit }),
           outputFields,
         ),
       );
@@ -952,9 +975,10 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
     : enriched;
   const linksLimit = sampleLimit ?? 10;
   const creatorsLimit = 20;
+  const imageLimit = 5;
   const derived = withResources.map((record) =>
     pickFields(
-      applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit }),
+      applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit, imageLimit }),
       outputFields,
     ),
   );
@@ -1639,6 +1663,8 @@ Note: creators list is capped in compact results (default 5).
 - **organizations** - Full organization list (get_record)
 - **recordUrl** - Link to full Finna record
 - **links** - Unified list of online resources (pdf/image/audio/video/external)
+- **imageTemplate** - URL template for many images (use {n} for index)
+- **imageCount** - Total number of images when templated
 
 ## Troubleshooting
 

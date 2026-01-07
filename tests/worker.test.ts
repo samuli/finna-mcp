@@ -154,6 +154,7 @@ describe('worker', () => {
     expect(payload.result.records[0].type).toBe('Kuva');
     expect(payload.result.records[0].description).toBe('A short description.');
     expect(payload.result.records[0].links.length).toBe(3);
+    expect(payload.result.records[0].imageCount).toBe(1);
     expect(payload.result.records[0].organization).toEqual({
       primary: 'Test Library',
       code: '0/TEST/',
