@@ -164,8 +164,8 @@ Use these in `filters.include.format` when narrowing by type:
 ## LLM UX Improvements Implemented (2026-01-06)
 ### Features
 - `fields_preset` added to `search_records` with presets:
-  - `compact`: `id`, `title`, `recordUrl`, `urls`, `onlineUrls`
-  - `media`: `id`, `title`, `recordUrl`, `images`, `urls`, `onlineUrls`, `formats`, `languages`, `year`
+  - `compact`: `id`, `title`, `description`, `type`, `format`, `year`, `creators`, `organization`, `links`, `recordUrl`
+  - `media`: compact + media-oriented link/image selection (same shape as compact, prefers media links)
   - `full`: adds richer metadata (subjects, genres, series, authors, publishers, summary, measurements)
 - `include_paths` added to `list_organizations` to include a `path` label for each node.
 

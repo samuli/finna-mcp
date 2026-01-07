@@ -450,7 +450,7 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'get_record',
-          arguments: { ids: ['a.1'], includeRawData: true },
+          arguments: { ids: ['a.1'], includeResources: true },
         },
       }),
     });
@@ -460,7 +460,7 @@ describe('worker', () => {
     expect(payload.result.records[0].id).toBe('a.1');
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('id%5B%5D=a.1');
-    expect(calledUrl).toContain('field%5B%5D=rawData');
+    expect(calledUrl).toContain('field%5B%5D=images');
   });
 
   it('get_record supports field presets', async () => {

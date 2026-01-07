@@ -100,7 +100,6 @@ const GetRecordArgs = z.object({
   lng: z.string().optional(),
   fields: z.array(z.string()).optional(),
   fields_preset: z.enum(FIELD_PRESET_OPTIONS).optional(),
-  includeRawData: z.boolean().optional(),
   includeResources: z.boolean().optional(),
   resourcesLimit: z.number().int().min(1).max(10).optional(),
   sampleLimit: z.number().int().min(1).max(5).optional(),
@@ -142,7 +141,7 @@ const ListToolsResponse = {
           fields_preset: {
             type: 'string',
             description:
-              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "media" (same as compact), "full" (adds richer metadata). Overrides default fields unless fields is set.',
+              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "media" (compact + prefers media-specific links/images), "full" (adds richer metadata). Overrides default fields unless fields is set.',
           },
           page: { type: 'number' },
           limit: { type: 'number', description: 'Number of results per page (0-100). To count records, set limit=0 and read resultCount.' },
@@ -227,18 +226,13 @@ const ListToolsResponse = {
           fields_preset: {
             type: 'string',
             description:
-              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "media" (adds images/onlineUrls), "full" (adds richer metadata).',
+              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "media" (compact + prefers media-specific links/images), "full" (adds richer metadata).',
           },
           fields: {
             type: 'array',
             items: { type: 'string' },
             description:
               'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, recordUrl. Use fields_preset="full" for full metadata.',
-          },
-          includeRawData: {
-            type: 'boolean',
-            description:
-              'Include raw source metadata (large/noisy). Use only when needed.',
           },
           includeResources: {
             type: 'boolean',
@@ -938,7 +932,6 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
     lng,
     fields,
     fields_preset,
-    includeRawData,
     includeResources,
     resourcesLimit,
     sampleLimit,
@@ -950,10 +943,6 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
       ? [...DEFAULT_RECORD_FIELDS]
       : resolveGetRecordFieldsPreset(fields_preset);
   const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
-  if (includeRawData) {
-    apiFields.push('rawData');
-    outputFields.push('rawData');
-  }
   if (includeResources) {
     apiFields.push('images', 'onlineUrls', 'urls');
     outputFields.push('resources', 'resourcesSummary');
@@ -2492,7 +2481,7 @@ function buildSearchMeta(options: {
   }
   if (options.requestedOnline && includesResourceFields && records.length > 0 && !hasResourceData) {
     info.push(
-      'No online resources found in these records; try fields_preset="full" or includeRawData for more source-specific links.',
+      'No online resources found in these records; try fields_preset="full" for more source-specific links.',
     );
   }
   if (options.extraWarning && options.extraWarning.length > 0) {
