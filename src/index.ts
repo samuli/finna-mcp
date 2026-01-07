@@ -973,9 +973,9 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   const withResources = includeResources
     ? enriched.map((record) => appendResourcesList(record, resourcesLimit ?? 10))
     : enriched;
-  const linksLimit = sampleLimit ?? 10;
+  const linksLimit = sampleLimit ?? 8;
   const creatorsLimit = 20;
-  const imageLimit = 5;
+  const imageLimit = 2;
   const derived = withResources.map((record) =>
     pickFields(
       applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit, imageLimit }),
