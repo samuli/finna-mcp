@@ -149,6 +149,11 @@ export function buildCompactCreators(
     if (role) {
       const split = role.split(/[,;/]/).map((entry) => entry.trim()).filter(Boolean);
       role = split.length > 0 ? split[0] : role;
+      const hasPunctuation = role.includes('.');
+      const isShortCode = /^[a-z]{1,3}$/.test(role);
+      if (isShortCode && !hasPunctuation) {
+        role = undefined;
+      }
     }
     const label = role ? `${contributor.name} (${role})` : contributor.name;
     creators.push(label);
