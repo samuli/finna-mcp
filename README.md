@@ -8,6 +8,8 @@ MCP server for [Finna](https://finna.fi) - Finnish library, archive, and museum 
 
 - **search_records**: Search with filters, facets, and field selection
 - **get_record**: Fetch full metadata by record ID
+- **list_organizations**: Browse library/museum hierarchy
+- **/spec**: Endpoint returning full tool schema
 
 ## Deploy to Cloudflare Workers
 
@@ -24,6 +26,7 @@ npm run deploy
 npm run dev          # http://localhost:8787/v1
 npm test             # unit tests
 npm run test:integration  # live tests
+curl http://localhost:8787/spec | jq .  # view tool schema
 ```
 
 ## Tools
@@ -92,5 +95,51 @@ curl -X POST http://localhost:8787/v1 \
       "text": "{\"summary\":\"get_record: 1 record\",\"response\":{\"records\":[{\"id\":\"vaski.4392587\",\"title\":\"Kotiliesi 2025\",\"links\":[{\"url\":\"https://digi.kansalliskirjasto.fi/...\"},{\"url\":\"https://www.varastokirjasto.fi/...\"}],\"organizations\":[{\"code\":\"0/Vaski/\",\"name\":\"Vaski-kirjastot\"},{\"code\":\"1/Vaski/1/\",\"name\":\"Turku\"}]}}}"
     }]
   }
+}
+```
+
+## Tool Schema
+
+The full tool specification is available at `/spec`:
+
+```bash
+curl http://localhost:8787/spec | jq .
+```
+
+**Returns:**
+```json
+{
+  "tools": [
+    {
+      "name": "search_records",
+      "description": "Search and retrieve metadata over records in Finna.fi...",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "description": "Search keywords..."},
+          "format": {
+            "type": ["string", "array"],
+            "description": "Content types (top-level format codes)..."
+          },
+          ...
+        }
+      }
+    },
+    {
+      "name": "get_record",
+      "description": "Get full metadata for one or more records.",
+      ...
+    },
+    {
+      "name": "list_organizations",
+      "description": "List organizations that have material in Finna.",
+      ...
+    },
+    {
+      "name": "help",
+      "description": "Show a help guide about Finna.fi...",
+      ...
+    }
+  ]
 }
 ```
