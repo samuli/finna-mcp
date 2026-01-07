@@ -338,7 +338,7 @@ Use these as examples and discover more via `facet[]=format`.
 ## Local Dev & Tests (quick notes)
 - `npm run test` runs unit tests (no network).
 - `npm run test:integration` runs live integration tests against local wrangler dev server.
-  - Override target with `FINNA_MCP_BASE_URL=http://127.0.0.1:8787/mcp`.
+  - Override target with `FINNA_MCP_BASE_URL=http://127.0.0.1:8787/v1`.
 - Python CLI client (separate deps):
   - `pip install -r examples/requirements.txt`
   - `python examples/mcp_cli.py "find photos of helsinki"` (uses `MCP_URL` + `MODEL` env vars).

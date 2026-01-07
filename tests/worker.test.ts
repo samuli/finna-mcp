@@ -14,13 +14,13 @@ describe('worker', () => {
   });
 
   it('rejects non-POST', async () => {
-    const request = new Request('http://example.com/mcp', { method: 'GET' });
+    const request = new Request('http://example.com/v1', { method: 'GET' });
     const response = await worker.fetch(request, baseEnv);
     expect(response.status).toBe(405);
   });
 
   it('lists tools', async () => {
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ method: 'listTools' }),
@@ -44,7 +44,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -79,7 +79,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp?structured_output=1', {
+    const request = new Request('http://example.com/v1?structured_output=1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -128,7 +128,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -182,7 +182,7 @@ describe('worker', () => {
       }),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -214,7 +214,7 @@ describe('worker', () => {
       }),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -250,7 +250,7 @@ describe('worker', () => {
       }),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -280,7 +280,7 @@ describe('worker', () => {
       }),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -315,7 +315,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -341,7 +341,7 @@ describe('worker', () => {
       }),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -394,7 +394,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -434,7 +434,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -471,7 +471,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -513,7 +513,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -553,7 +553,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -591,7 +591,7 @@ describe('worker', () => {
       ),
     );
 
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -613,7 +613,7 @@ describe('worker', () => {
   });
 
   it('opens SSE endpoint stream', async () => {
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'GET',
       headers: { accept: 'text/event-stream' },
     });
@@ -632,7 +632,7 @@ describe('worker', () => {
   });
 
   it('routes JSON-RPC over SSE session', async () => {
-    const sseRequest = new Request('http://example.com/mcp', {
+    const sseRequest = new Request('http://example.com/v1', {
       method: 'GET',
       headers: { accept: 'text/event-stream' },
     });
@@ -669,7 +669,7 @@ describe('worker', () => {
   });
 
   it('help tool returns guide content', async () => {
-    const request = new Request('http://example.com/mcp', {
+    const request = new Request('http://example.com/v1', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

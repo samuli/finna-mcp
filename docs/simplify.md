@@ -77,7 +77,7 @@ const hasResourceData = records.some((record) => {
 
 **Test**:
 ```bash
-curl -X POST http://localhost:8787/mcp -H "Content-Type: application/json" \
+curl -X POST http://localhost:8787/v1 -H "Content-Type: application/json" \
   --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_records","arguments":{"available_online":true,"format":"0/Image/","limit":3}}}'
 # Should NOT show "No online resources found" when records have links
 ```

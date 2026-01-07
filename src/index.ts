@@ -264,7 +264,7 @@ const ListToolsResponse = {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname !== '/mcp') {
+    if (url.pathname !== '/v1') {
       return new Response('Not Found', { status: 404 });
     }
     const structuredOutput = url.searchParams.get('structured_output') === '1';

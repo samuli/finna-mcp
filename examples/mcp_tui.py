@@ -634,7 +634,7 @@ def main() -> None:
 
     question = " ".join(args.question).strip()
 
-    mcp_url = os.environ.get("MCP_URL", "http://localhost:8787/mcp")
+    mcp_url = os.environ.get("MCP_URL", "http://localhost:8787/v1")
     model_id = os.environ.get("MODEL_ID", "openai:gpt-4o-mini")
     model = os.environ.get("MODEL", model_id)
 
