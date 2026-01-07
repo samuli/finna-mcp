@@ -25,12 +25,6 @@ pnpm-debug.log*
 .env
 .env.*
 
-# Python venv in repo
-.venv/
-__pycache__/
-examples/.openrouter_models_cache.json
-examples/.openrouter_model.json
-
 # Test output
 /coverage/
 .npm/
