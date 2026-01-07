@@ -70,8 +70,6 @@ const SEARCH_SORT_OPTIONS = [
 const SEARCH_MODE_OPTIONS = ['simple', 'advanced'] as const;
 const ADVANCED_OPERATOR_OPTIONS = ['AND', 'OR'] as const;
 
-const FIELD_PRESET_OPTIONS = ['compact', 'full'] as const;
-
 const SearchRecordsArgs = z.object({
   query: z.string().default(''),
   type: z.string().default('AllFields'),
@@ -97,7 +95,6 @@ const GetRecordArgs = z.object({
   ids: z.array(z.string()).min(1),
   lng: z.string().optional(),
   fields: z.array(z.string()).optional(),
-  fields_preset: z.enum(FIELD_PRESET_OPTIONS).optional(),
 });
 
 const ListOrganizationsArgs = z.object({
@@ -202,22 +199,17 @@ const ListToolsResponse = {
     },
     {
       name: 'get_record',
-      description: 'Get metadata for one or more records.',
+      description: 'Get full metadata for one or more records.',
       inputSchema: {
         type: 'object',
         properties: {
           ids: { type: 'array', items: { type: 'string' }, description: 'Record ID(s)' },
           lng: { type: 'string', description: 'Language code (e.g., "fi", "sv", "en")' },
-          fields_preset: {
-            type: 'string',
-            description:
-              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "full" (adds richer metadata).',
-          },
           fields: {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, recordUrl. Use fields_preset="full" for full metadata.',
+              'Advanced: explicit fields to return (overrides default full output).',
           },
         },
         required: ['ids'],
@@ -353,28 +345,6 @@ const COMPACT_SEARCH_API_FIELDS = [
   'recordUrl',
 ];
 
-const DEFAULT_RECORD_FIELDS = [
-  'id',
-  'title',
-  'description',
-  'type',
-  'format',
-  'year',
-  'creators',
-  'organization',
-  'links',
-  'imageCount',
-  'recordUrl',
-];
-
-function resolveGetRecordFieldsPreset(preset?: string): string[] {
-  if (!preset) {
-    return [...DEFAULT_RECORD_FIELDS];
-  }
-  const selected = GET_RECORD_FIELD_PRESETS[preset];
-  return selected ? [...selected] : [...DEFAULT_RECORD_FIELDS];
-}
-
 function normalizeRequestedFields(fields: string[]): { apiFields: string[]; outputFields: string[] } {
   const apiFields: string[] = [];
   const outputFields: string[] = [];
@@ -436,11 +406,25 @@ function normalizeRecordOrganizations(record: Record<string, unknown>): Record<s
   if (!organizations) {
     return record;
   }
+  // Transform organization entries: value -> code, translated -> name
+  const transformed = Array.isArray(organizations)
+    ? organizations.map((org): unknown => {
+        if (!org || typeof org !== 'object') {
+          return org;
+        }
+        const { value, translated, ...rest } = org as Record<string, unknown>;
+        return {
+          code: value,
+          name: translated,
+          ...rest,
+        };
+      })
+    : organizations;
   const { buildings, ...rest } = record as Record<string, unknown>;
   void buildings;
   return {
     ...rest,
-    organizations,
+    organizations: transformed,
   };
 }
 
@@ -455,13 +439,15 @@ function buildOrganizationSummary(record: Record<string, unknown>): Record<strin
   const primary = organizations[0];
   const label =
     primary && typeof primary === 'object'
-      ? String((primary as { translated?: unknown; label?: unknown }).translated ??
-          (primary as { translated?: unknown; label?: unknown }).label ??
+      ? String((primary as { name?: unknown; translated?: unknown; label?: unknown }).name ??
+          (primary as { name?: unknown; translated?: unknown; label?: unknown }).translated ??
+          (primary as { name?: unknown; translated?: unknown; label?: unknown }).label ??
           '')
       : '';
   const code =
     primary && typeof primary === 'object'
-      ? String((primary as { value?: unknown }).value ?? '')
+      ? String((primary as { code?: unknown; value?: unknown }).code ??
+          (primary as { code?: unknown; value?: unknown }).value ?? '')
       : '';
   const locationCount = Math.max(organizations.length - 1, 0);
   return {
@@ -495,14 +481,22 @@ function pruneEmptyFields(record: Record<string, unknown>): Record<string, unkno
       if (value.length === 0) {
         continue;
       }
-      output[key] = value;
+      // Recurse on array elements that are objects
+      const prunedArray = value.map((item) =>
+        item && typeof item === 'object' && !Array.isArray(item)
+          ? pruneEmptyFields(item as Record<string, unknown>)
+          : item
+      );
+      output[key] = prunedArray;
       continue;
     }
     if (value && typeof value === 'object') {
-      if (Object.keys(value as Record<string, unknown>).length === 0) {
+      // Recurse on nested objects
+      const pruned = pruneEmptyFields(value as Record<string, unknown>);
+      if (Object.keys(pruned).length === 0) {
         continue;
       }
-      output[key] = value;
+      output[key] = pruned;
       continue;
     }
     if (value === null || value === undefined) {
@@ -630,41 +624,6 @@ function buildDescription(
   return trimmed.length > max ? `${trimmed.slice(0, max).trim()}…` : trimmed;
 }
 
-const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
-  compact: [
-    'id',
-    'title',
-    'description',
-    'type',
-    'format',
-    'year',
-    'creators',
-    'organization',
-    'links',
-    'imageCount',
-    'recordUrl',
-  ],
-  full: [
-    'id',
-    'title',
-    'recordUrl',
-    'formats',
-    'year',
-    'images',
-    'onlineUrls',
-    'urls',
-    'organizations',
-    'subjects',
-    'genres',
-    'series',
-    'authors',
-    'nonPresenterAuthors',
-    'publishers',
-    'summary',
-    'measurements',
-  ],
-};
-
 async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   const parsed = SearchRecordsArgs.safeParse(args ?? {});
   if (!parsed.success) {
@@ -774,13 +733,28 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const { ids, lng, fields, fields_preset } = parsed.data;
-  const useCompactOutput = fields === undefined && fields_preset === undefined;
-  const selectedFields = fields
-    ? [...fields]
-    : useCompactOutput
-      ? [...DEFAULT_RECORD_FIELDS]
-      : resolveGetRecordFieldsPreset(fields_preset);
+  const { ids, lng, fields } = parsed.data;
+  // Default to full metadata
+  const fullFields = [
+    'id',
+    'title',
+    'recordUrl',
+    'formats',
+    'year',
+    'images',
+    'onlineUrls',
+    'urls',
+    'organizations',
+    'subjects',
+    'genres',
+    'series',
+    'authors',
+    'nonPresenterAuthors',
+    'publishers',
+    'summary',
+    'measurements',
+  ];
+  const selectedFields = fields ?? fullFields;
   const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
 
   const url = buildRecordUrl({
