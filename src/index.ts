@@ -24,6 +24,7 @@ const HIERARCHICAL_FACET_FIELDS = new Set([
   'sector_str_mv',
   'category_str_mv',
 ]);
+const DEFAULT_FACET_LIMIT = 30;
 
 const toolNames = [
   'search_records',
@@ -196,6 +197,10 @@ const ListToolsResponse = {
             items: { type: 'string' },
             description:
             'Facets to return (e.g., ["building", "format"]). If empty or omitted, no facets are returned. Note that facets (especially building) often returns lots of data.'
+          },
+          facet_limit: {
+            type: 'number',
+            description: 'Max number of facet values to return for hierarchical facets (default 30).',
           },
           fields: {
             type: 'array',
@@ -831,6 +836,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     year,
     filters,
     facets,
+    facet_limit,
     fields,
     sampleLimit,
   } = parsed.data;
@@ -915,7 +921,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
 
   return json({
     result: {
-      ...stripFacetsIfUnused(payload, facets),
+      ...stripFacetsIfUnused(payload, facets, facet_limit ?? DEFAULT_FACET_LIMIT),
       records: cleaned,
       ...(meta ? { meta } : {}),
     },
@@ -1692,16 +1698,88 @@ Note: creators list is capped in compact results (default 5).
 function stripFacetsIfUnused(
   payload: Record<string, unknown>,
   requestedFacets?: string[] | null,
+  facetLimit: number = DEFAULT_FACET_LIMIT,
 ): Record<string, unknown> {
-  if (requestedFacets && requestedFacets.length > 0) {
+  if (!requestedFacets || requestedFacets.length === 0) {
+    if (!('facets' in payload)) {
+      return payload;
+    }
+    const { facets: omittedFacets, ...rest } = payload;
+    void omittedFacets;
+    return rest as Record<string, unknown>;
+  }
+  const facets = payload.facets;
+  if (!facets || typeof facets !== 'object') {
     return payload;
   }
-  if (!('facets' in payload)) {
-    return payload;
+  const facetMap = facets as Record<string, unknown>;
+  const prunedFacets: Record<string, unknown> = { ...facetMap };
+  let pruned = false;
+  const prunedNames: string[] = [];
+  for (const [name, values] of Object.entries(facetMap)) {
+    if (!isHierarchicalFacetField(name)) {
+      continue;
+    }
+    if (!Array.isArray(values) || values.length <= facetLimit) {
+      continue;
+    }
+    const { items, truncated } = limitHierarchicalFacet(values, facetLimit);
+    if (truncated) {
+      pruned = true;
+      prunedNames.push(name);
+    }
+    prunedFacets[name] = items;
   }
-  const { facets: omittedFacets, ...rest } = payload;
-  void omittedFacets;
-  return rest as Record<string, unknown>;
+  const adjusted: Record<string, unknown> = { ...payload, facets: prunedFacets };
+  if (pruned) {
+    adjusted.meta = { ...(asObject(adjusted.meta) ?? {}), prunedFacets: prunedNames };
+  }
+  return adjusted;
+}
+
+function limitHierarchicalFacet(
+  values: Record<string, unknown>[],
+  limit: number,
+): { items: Record<string, unknown>[]; truncated: boolean } {
+  const total = values.length;
+  if (total <= limit) {
+    return { items: values, truncated: false };
+  }
+  const queue: Array<{ node: Record<string, unknown>; depth: number }> = values.map((node) => ({
+    node,
+    depth: 0,
+  }));
+  const grouped: Map<number, Array<Record<string, unknown>>> = new Map();
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const level = grouped.get(current.depth) ?? [];
+    level.push(current.node);
+    grouped.set(current.depth, level);
+    const children = current.node.children;
+    if (Array.isArray(children)) {
+      for (const child of children) {
+        if (child && typeof child === 'object') {
+          queue.push({ node: child as Record<string, unknown>, depth: current.depth + 1 });
+        }
+      }
+    }
+  }
+
+  const levelKeys = Array.from(grouped.keys()).sort((a, b) => a - b);
+  const picked: Record<string, unknown>[] = [];
+  for (const depth of levelKeys) {
+    const level = grouped.get(depth) ?? [];
+    for (const node of level) {
+      if (picked.length >= limit) {
+        break;
+      }
+      picked.push(node);
+    }
+    if (picked.length >= limit) {
+      break;
+    }
+  }
+  return { items: picked, truncated: true };
 }
 
 function normalizeSort(sort?: string): string | undefined {
