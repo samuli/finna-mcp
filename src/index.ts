@@ -1614,6 +1614,7 @@ The usage rights of materials descriptions and cover images of library materials
 
 ## Common record formats (examples)
 Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
+When requesting hierarchical facets (like \`building\` or \`format\`), you can cap the response with \`facet_limit\` (default 30).
 - \`0/Book/\` — Books (all)
 - \`0/Book/eBook/\` — E-books
 - \`0/Book/BookSection/\` — Book sections / chapters
