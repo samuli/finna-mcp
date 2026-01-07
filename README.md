@@ -28,9 +28,11 @@ npm test             # unit tests
 npm run test:integration  # live tests
 ```
 
-## MCP Endpoint
+## Tools
 
-POST to `/v1` with JSON-RPC 2.0:
+### search_records
+
+Search for records with filters and facets.
 
 ```bash
 curl -X POST http://localhost:8787/v1 \
@@ -41,7 +43,56 @@ curl -X POST http://localhost:8787/v1 \
     "method": "tools/call",
     "params": {
       "name": "search_records",
-      "arguments": {"lookfor": "sibelius", "type": "AllFields", "limit": 3}
+      "arguments": {
+        "lookfor": "helsinki",
+        "type": "AllFields",
+        "format": "0/Image/",
+        "limit": 3
+      }
     }
   }'
+```
+
+**Response:**
+```json
+{
+  "result": {
+    "content": [{
+      "type": "text",
+      "text": "{\"summary\":\"search_records: 9424 hits 3 returned\",\"response\":{\"resultCount\":9424,\"records\":[{\"id\":\"vaski.4414504\",\"title\":\"Kimpassa : friends edition\",\"type\":\"Sana/kuvakortti\",\"format\":\"0/Image/\",\"year\":\"2024\",\"organization\":{\"primary\":\"Vaski-kirjastot\",\"code\":\"0/Vaski/\",\"locations\":3},\"recordUrl\":\"https://finna.fi/Record/vaski.4414504\"}]}}"
+    }]
+  }
+}
+```
+
+### get_record
+
+Fetch full metadata for one or more records.
+
+```bash
+curl -X POST http://localhost:8787/v1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "get_record",
+      "arguments": {
+        "ids": ["vaski.4392587"]
+      }
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "result": {
+    "content": [{
+      "type": "text",
+      "text": "{\"summary\":\"get_record: 1 record\",\"response\":{\"records\":[{\"id\":\"vaski.4392587\",\"title\":\"Kotiliesi 2025\",\"links\":[{\"url\":\"https://digi.kansalliskirjasto.fi/...\"},{\"url\":\"https://www.varastokirjasto.fi/...\"}],\"organizations\":[{\"code\":\"0/Vaski/\",\"name\":\"Vaski-kirjastot\"},{\"code\":\"1/Vaski/1/\",\"name\":\"Turku\"}]}}}"
+    }]
+  }
+}
 ```
