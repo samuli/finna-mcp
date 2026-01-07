@@ -152,12 +152,12 @@ Use these in `filters.include.format` when narrowing by type:
 ## Suggested Next Improvements (prioritized)
 1. **Auto-advanced hinting**: if `lookfor` contains multiple terms, return a `meta.warning` suggesting `search_mode="advanced"` with `advanced_operator="AND"`; do not auto-switch to preserve semantics.
 2. **Compact org list mode**: return only top-level orgs with counts + a `meta.hint` to use `lookfor` or `include_paths` for deeper nodes.
-3. **Field presets for get_record**: mirror `fields_preset` in `get_record` so models can request compact/media/full without remembering field names.
+3. **Field presets for get_record**: mirror `fields_preset` in `get_record` so models can request compact/full without remembering field names.
 4. **Add org “path” only on demand**: keep default lean; ensure `include_paths` is explicit (already implemented).
 5. **Holdings/availability path**: investigate non-session endpoints or per-org APIs before reintroducing a holdings tool.
 
 ## LLM UX Improvement Ideas (shortlist)
-- Add `fields_preset` for `search_records` so the model can request compact/media/full record shapes without memorizing field names.
+- Add `fields_preset` for `search_records` so the model can request compact/full record shapes without memorizing field names.
 - Add `include_paths` for `list_organizations` to provide explicit org paths (e.g., “Satakirjastot / Rauma / Rauman pääkirjasto”).
 - Add a `search_mode` hint in tool docs so multi-term queries use advanced mode.
 
@@ -165,13 +165,12 @@ Use these in `filters.include.format` when narrowing by type:
 ### Features
 - `fields_preset` added to `search_records` with presets:
   - `compact`: `id`, `title`, `description`, `type`, `format`, `year`, `creators`, `organization`, `links`, `recordUrl`
-  - `media`: compact + media-oriented link/image selection (same shape as compact, prefers media links)
   - `full`: adds richer metadata (subjects, genres, series, authors, publishers, summary, measurements)
 - `include_paths` added to `list_organizations` to include a `path` label for each node.
 
 ### Re-evaluation (2026-01-06)
 - `search_records(fields_preset="compact")` returns a minimal set (observed: `id`, `title`, `recordUrl`). Result counts match API.
-- `search_records(fields_preset="media")` returns metadata needed for content/media discovery (observed: `formats`, `languages`, `year`, plus `id`, `title`, `recordUrl`).
+- `search_records(fields_preset="full")` returns richer metadata beyond the compact set.
 - `list_organizations(include_paths=true)` adds path strings like:
   - `Satakirjastot / Rauma`
   - `Satakunnan ammattikorkeakoulu / Rauma`
@@ -209,7 +208,7 @@ Use these in `filters.include.format` when narrowing by type:
 
 ## Feature: get_record Field Presets (2026-01-06)
 ### Change
-- `get_record(fields_preset=compact|media|full)` mirrors `search_records` presets for consistent field selection.
+- `get_record(fields_preset=compact|full)` mirrors `search_records` presets for consistent field selection.
 
 ### Re-evaluation
 - `fields_preset="compact"` returns minimal fields (observed: `id`, `title`, `recordUrl`).

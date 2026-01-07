@@ -450,7 +450,7 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'get_record',
-          arguments: { ids: ['a.1'], includeResources: true },
+          arguments: { ids: ['a.1'] },
         },
       }),
     });
@@ -460,7 +460,7 @@ describe('worker', () => {
     expect(payload.result.records[0].id).toBe('a.1');
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('id%5B%5D=a.1');
-    expect(calledUrl).toContain('field%5B%5D=images');
+    expect(calledUrl).toContain('field%5B%5D=title');
   });
 
   it('get_record supports field presets', async () => {
@@ -496,38 +496,6 @@ describe('worker', () => {
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).not.toContain('field%5B%5D=recordUrl');
     expect(calledUrl).toContain('field%5B%5D=buildings');
-  });
-
-  it('get_record can include resource list', async () => {
-    const mockFetch = vi.mocked(globalThis.fetch);
-    mockFetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          records: [
-            {
-              id: 'x.1',
-              images: ['/Cover/Show?id=2'],
-              onlineUrls: [{ url: 'https://example.com/video.mp4' }],
-              urls: [],
-            },
-          ],
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
-
-    const request = new Request('http://example.com/mcp', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        method: 'callTool',
-        params: { name: 'get_record', arguments: { ids: ['x.1'], includeResources: true, resourcesLimit: 3 } },
-      }),
-    });
-
-    const response = await worker.fetch(request, baseEnv);
-    const payload = await response.json();
-    expect(payload.result.records[0].resources.length).toBe(2);
   });
 
   it('list_organizations parses hierarchy from UI HTML', async () => {

@@ -156,7 +156,7 @@ suite('integration (local wrangler)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         method: 'callTool',
-        params: { name: 'get_record', arguments: { ids: [recordId], includeResources: true, resourcesLimit: 3 } },
+        params: { name: 'get_record', arguments: { ids: [recordId] } },
       }),
     });
     expect(resourcesResponse.ok).toBe(true);

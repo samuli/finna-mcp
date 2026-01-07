@@ -2,7 +2,6 @@ import { z } from 'zod';
 import {
   buildSearchUrl,
   buildRecordUrl,
-  extractResourcesFromRecord,
   buildCompactCreators,
   buildCompactLinks,
   enrichRecordResources,
@@ -71,7 +70,7 @@ const SEARCH_SORT_OPTIONS = [
 const SEARCH_MODE_OPTIONS = ['simple', 'advanced'] as const;
 const ADVANCED_OPERATOR_OPTIONS = ['AND', 'OR'] as const;
 
-const FIELD_PRESET_OPTIONS = ['compact', 'media', 'full'] as const;
+const FIELD_PRESET_OPTIONS = ['compact', 'full'] as const;
 
 const SearchRecordsArgs = z.object({
   query: z.string().default(''),
@@ -100,9 +99,6 @@ const GetRecordArgs = z.object({
   lng: z.string().optional(),
   fields: z.array(z.string()).optional(),
   fields_preset: z.enum(FIELD_PRESET_OPTIONS).optional(),
-  includeResources: z.boolean().optional(),
-  resourcesLimit: z.number().int().min(1).max(10).optional(),
-  sampleLimit: z.number().int().min(1).max(5).optional(),
 });
 
 const ListOrganizationsArgs = z.object({
@@ -141,7 +137,7 @@ const ListToolsResponse = {
           fields_preset: {
             type: 'string',
             description:
-              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "media" (compact + prefers media-specific links/images), "full" (adds richer metadata). Overrides default fields unless fields is set.',
+              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "full" (adds richer metadata). Overrides default fields unless fields is set.',
           },
           page: { type: 'number' },
           limit: { type: 'number', description: 'Number of results per page (0-100). To count records, set limit=0 and read resultCount.' },
@@ -226,28 +222,13 @@ const ListToolsResponse = {
           fields_preset: {
             type: 'string',
             description:
-              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "media" (compact + prefers media-specific links/images), "full" (adds richer metadata).',
+              'Field preset: "compact" (id/title/description/type/format/year/creators/organization/links/recordUrl), "full" (adds richer metadata).',
           },
           fields: {
             type: 'array',
             items: { type: 'string' },
             description:
               'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, recordUrl. Use fields_preset="full" for full metadata.',
-          },
-          includeResources: {
-            type: 'boolean',
-            description:
-              'Include a compact list of external resources (capped).',
-          },
-          resourcesLimit: {
-            type: 'number',
-            description:
-              'Max number of resources to list per record (1-10).',
-          },
-          sampleLimit: {
-            type: 'number',
-            description:
-              'Max number of example resource links per record.',
           },
         },
         required: ['ids'],
@@ -684,50 +665,8 @@ function buildDescription(
   return trimmed.length > max ? `${trimmed.slice(0, max).trim()}…` : trimmed;
 }
 
-function appendResourcesList(record: Record<string, unknown>, limit: number): Record<string, unknown> {
-  if (!record || typeof record !== 'object') {
-    return record;
-  }
-  const extracted = extractResourcesFromRecord(record, limit);
-  if (!Array.isArray(extracted.resources) || extracted.resources.length === 0) {
-    return record;
-  }
-  const total = Object.values(extracted.resourceCounts ?? {}).reduce(
-    (sum, count) => sum + (typeof count === 'number' ? count : 0),
-    0,
-  );
-  const listed = extracted.resources.length;
-  const summary =
-    total > listed
-      ? {
-          listed,
-          total,
-          note: 'Listing a subset of resources. See recordUrl for the full list.',
-        }
-      : undefined;
-  return {
-    ...record,
-    resources: extracted.resources,
-    ...(summary ? { resourcesSummary: summary } : {}),
-  };
-}
-
 const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
   compact: [
-    'id',
-    'title',
-    'description',
-    'type',
-    'format',
-    'year',
-    'creators',
-    'organization',
-    'links',
-    'imageTemplate',
-    'imageCount',
-    'recordUrl',
-  ],
-  media: [
     'id',
     'title',
     'description',
@@ -775,16 +714,6 @@ const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
     'imageTemplate',
     'imageCount',
     'recordUrl',
-  ],
-  media: [
-    'id',
-    'title',
-    'recordUrl',
-    'images',
-    'urls',
-    'onlineUrls',
-    'formats',
-    'year',
   ],
   full: [
     'id',
@@ -836,7 +765,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   } = parsed.data;
   const useCompactOutput =
     fields === undefined &&
-    (fields_preset === undefined || fields_preset === 'compact' || fields_preset === 'media');
+    (fields_preset === undefined || fields_preset === 'compact');
   let normalizedFilters = normalizeFilters(filters);
   normalizedFilters = mergeTopLevelFilters(normalizedFilters, {
     available_online,
@@ -927,15 +856,7 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const {
-    ids,
-    lng,
-    fields,
-    fields_preset,
-    includeResources,
-    resourcesLimit,
-    sampleLimit,
-  } = parsed.data;
+  const { ids, lng, fields, fields_preset } = parsed.data;
   const useCompactOutput = fields === undefined && fields_preset === undefined;
   const selectedFields = fields
     ? [...fields]
@@ -943,10 +864,6 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
       ? [...DEFAULT_RECORD_FIELDS]
       : resolveGetRecordFieldsPreset(fields_preset);
   const { apiFields, outputFields } = normalizeRequestedFields(selectedFields);
-  if (includeResources) {
-    apiFields.push('images', 'onlineUrls', 'urls');
-    outputFields.push('resources', 'resourcesSummary');
-  }
 
   const url = buildRecordUrl({
     apiBase: env.FINNA_API_BASE,
@@ -959,19 +876,13 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
   const records = getRecords(payload);
   const enriched = records.map((record) =>
     normalizeRecordOrganizations(
-      addRecordPageUrl(
-        enrichRecordResources(record, sampleLimit ?? 5),
-        env.FINNA_UI_BASE,
-      ),
+      addRecordPageUrl(enrichRecordResources(record, 3), env.FINNA_UI_BASE),
     ),
   );
-  const withResources = includeResources
-    ? enriched.map((record) => appendResourcesList(record, resourcesLimit ?? 10))
-    : enriched;
-  const linksLimit = sampleLimit ?? 8;
-  const creatorsLimit = 20;
+  const linksLimit = 3;
+  const creatorsLimit = 5;
   const imageLimit = 2;
-  const derived = withResources.map((record) =>
+  const derived = enriched.map((record) =>
     pickFields(
       applyDerivedFields(record, outputFields, { linksLimit, creatorsLimit, imageLimit }),
       outputFields,
@@ -984,7 +895,7 @@ async function handleGetRecord(env: Env, args: unknown): Promise<Response> {
 
   return json({
     result: {
-      ...payload,
+      status: (payload as { status?: string }).status ?? 'OK',
       records: cleaned,
     },
   });
