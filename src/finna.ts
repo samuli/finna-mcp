@@ -107,11 +107,10 @@ type CompactLink = {
 export function buildCompactLinks(
   record: Record<string, unknown>,
   options: { limit: number; imageLimit: number },
-): { links: CompactLink[]; total: number; imageTemplate?: string; imageCount?: number } {
+): { links: CompactLink[]; total: number; imageCount?: number } {
   const resources = collectResources(record);
   const seen = new Map<string, CompactLink>();
   let imageCount = 0;
-  const imageCandidates: URL[] = [];
   for (const resource of resources) {
     const url = resource.url;
     if (!url) {
@@ -131,11 +130,6 @@ export function buildCompactLinks(
     seen.set(normalized.key, link);
     if (resource.type === 'image') {
       imageCount += 1;
-      try {
-        imageCandidates.push(new URL(normalized.url));
-      } catch {
-        // ignore invalid urls
-      }
     }
   }
   const links = Array.from(seen.values()).sort((a, b) => {
@@ -154,42 +148,18 @@ export function buildCompactLinks(
     filtered.push(link);
   }
 
-  let imageTemplate: string | undefined;
-  if (imageCandidates.length > 0) {
-    const first = imageCandidates[0];
-    const baseKey = `${first.origin}${first.pathname}`;
-    const firstSource = first.searchParams.get('source');
-    const firstId = first.searchParams.get('id');
-    const firstSize = first.searchParams.get('size');
-    const allMatch = imageCandidates.every((candidate) => {
-      return (
-        `${candidate.origin}${candidate.pathname}` === baseKey &&
-        candidate.searchParams.get('source') === firstSource &&
-        candidate.searchParams.get('id') === firstId &&
-        candidate.searchParams.get('size') === firstSize &&
-        candidate.searchParams.get('index')
-      );
-    });
-    if (allMatch && firstSource && firstId) {
-      const size = firstSize ? `&size=${firstSize}` : '';
-      imageTemplate = `${first.origin}${first.pathname}?source=${firstSource}&id=${firstId}&index={n}${size}`;
-    }
-  }
-
   const total = filtered.length;
   if (options.limit > 0 && filtered.length > options.limit) {
     return {
       links: filtered.slice(0, options.limit),
       total: filtered.length,
-      ...(imageTemplate ? { imageTemplate, imageCount } : {}),
-      ...(imageCount > 0 && !imageTemplate ? { imageCount } : {}),
+      ...(imageCount > 0 ? { imageCount } : {}),
     };
   }
   return {
     links: filtered,
     total,
-    ...(imageTemplate ? { imageTemplate, imageCount } : {}),
-    ...(imageCount > 0 && !imageTemplate ? { imageCount } : {}),
+    ...(imageCount > 0 ? { imageCount } : {}),
   };
 }
 

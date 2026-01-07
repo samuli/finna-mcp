@@ -201,7 +201,7 @@ const ListToolsResponse = {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, imageTemplate, imageCount, recordUrl. Use get_record for full organizations list.',
+              'Advanced: explicit record fields to return. Defaults include: id, title, description, type, format, year, creators, organization (summary), links, imageCount, recordUrl. Use get_record for full organizations list.',
           },
         },
       },
@@ -382,7 +382,6 @@ const DEFAULT_RECORD_FIELDS = [
   'creators',
   'organization',
   'links',
-  'imageTemplate',
   'imageCount',
   'recordUrl',
 ];
@@ -432,7 +431,7 @@ function normalizeRequestedFields(fields: string[]): { apiFields: string[]; outp
       outputFields.push('links');
       continue;
     }
-    if (field === 'imageTemplate' || field === 'imageCount') {
+    if (field === 'imageCount') {
       outputFields.push(field);
       continue;
     }
@@ -567,7 +566,6 @@ function buildCompactSearchRecord(
     organization: (summarized as { organization?: unknown }).organization,
     links: linksResult.links,
     ...(linksResult.total > linksResult.links.length ? { linksTotal: linksResult.total } : {}),
-    ...(linksResult.imageTemplate ? { imageTemplate: linksResult.imageTemplate } : {}),
     ...(linksResult.imageCount ? { imageCount: linksResult.imageCount } : {}),
     recordUrl: summarized.recordUrl,
   };
@@ -605,7 +603,6 @@ function applyDerivedFields(
       ...derived,
       links: linksResult.links,
       ...(linksResult.total > linksResult.links.length ? { linksTotal: linksResult.total } : {}),
-      ...(linksResult.imageTemplate ? { imageTemplate: linksResult.imageTemplate } : {}),
       ...(linksResult.imageCount ? { imageCount: linksResult.imageCount } : {}),
     };
   }
@@ -671,7 +668,6 @@ const SEARCH_FIELD_PRESETS: Record<string, string[]> = {
     'creators',
     'organization',
     'links',
-    'imageTemplate',
     'imageCount',
     'recordUrl',
   ],
@@ -706,7 +702,6 @@ const GET_RECORD_FIELD_PRESETS: Record<string, string[]> = {
     'creators',
     'organization',
     'links',
-    'imageTemplate',
     'imageCount',
     'recordUrl',
   ],
@@ -1389,8 +1384,7 @@ Note: creators list is capped in compact results (default 5).
 - **organizations** - Full organization list (get_record)
 - **recordUrl** - Link to full Finna record
 - **links** - Unified list of online resources (pdf/image/audio/video/external)
-- **imageTemplate** - URL template for many images (use {n} for index)
-- **imageCount** - Total number of images when templated
+- **imageCount** - Total number of images
 
 ## Troubleshooting
 

@@ -233,7 +233,7 @@ Top-level format codes (discover via `facets=["format"]`):
 
 ### Observations
 - Compact `search_records` returns the minimal schema and prunes empty fields. Typical fields seen: `id`, `title`, `type`, `format`, `year`, `organization`, `recordUrl` (description/creators/links omitted when empty).
-- Online image search returns compact records with `links`, `imageTemplate`, and `imageCount` as expected.
+- Online image search returns compact records with `links` and `imageCount` as expected.
 - `get_record` now returns the same compact shape as `search_records` (by default), simplifying follow-up fetches by id.
 - `facet_limit` works: format facet list capped to 10 values when requested.
 - `list_organizations` query returns a narrowed facet list (Seinäjoki returns 1 entry).
