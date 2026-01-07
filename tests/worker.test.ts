@@ -376,27 +376,19 @@ describe('worker', () => {
     );
   });
 
-  it('list_organizations uses building facet', async () => {
+  it('list_organizations uses building facet from search API', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          data: {
-            facets: {
-              building: {
-                html: `
-                  <ul class="facet-tree">
-                    <li>
-                      <span class="facet js-facet-item facetOR">
-                        <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%221%2FKANSA%2F%22" data-title="KANSA" data-count="3">
-                          <span class="facet-value icon-link__label">KANSA</span>
-                        </a>
-                      </span>
-                    </li>
-                  </ul>
-                `,
+          facets: {
+            building: [
+              {
+                value: '0/KANSALLISKIRJASTO/',
+                translated: 'Kansalliskirjasto',
+                count: 1000,
               },
-            },
+            ],
           },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -410,7 +402,7 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'list_organizations',
-          arguments: { query: '', filters: { organization: ['1/KANSA/'] } },
+          arguments: {},
         },
       }),
     });
@@ -418,11 +410,11 @@ describe('worker', () => {
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
     expect(payload.result.facets.building.length).toBe(1);
+    expect(payload.result.facets.building[0].value).toBe('0/KANSALLISKIRJASTO/');
     const calledUrl = String(mockFetch.mock.calls[0][0]);
-    expect(calledUrl).toContain('/AJAX/JSON');
-    expect(calledUrl).toContain('method=getSideFacets');
-    expect(calledUrl).toContain('enabledFacets%5B%5D=building');
-    // list_organizations always fetches the full facet list and filters locally.
+    expect(calledUrl).toContain('/search');
+    expect(calledUrl).toContain('facet%5B%5D=building');
+    expect(calledUrl).toContain('limit=0');
   });
 
   it('get_record supports multiple ids and resource samples', async () => {
@@ -498,42 +490,28 @@ describe('worker', () => {
     expect(calledUrl).toContain('field%5B%5D=buildings');
   });
 
-  it('list_organizations parses hierarchy from UI HTML', async () => {
+  it('list_organizations returns top-level organizations from search API', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
-    const fixture = JSON.stringify({
-      data: {
-        facets: {
-          building: {
-            html: `
-              <ul class="facet-tree">
-                <li class="facet-tree__parent">
-                  <span class="facet-tree__item-container">
-                    <span class="facet js-facet-item facetOR">
-                      <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%220%2FEepos%2F%22" data-title="Eepos-kirjastot" data-count="360571">
-                        <span class="facet-value icon-link__label">Eepos-kirjastot</span>
-                      </a>
-                    </span>
-                  </span>
-                  <ul>
-                    <li class="facet-tree__parent">
-                      <span class="facet-tree__item-container">
-                        <span class="facet js-facet-item facetOR">
-                          <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%221%2FEepos%2F19%2F%22" data-title="Seinäjoki" data-count="2947">
-                            <span class="facet-value icon-link__label">Seinäjoki</span>
-                          </a>
-                        </span>
-                      </span>
-                    </li>
-                  </ul>
-                </li>
-              </ul>
-            `,
-          },
-        },
-      },
-    });
     mockFetch.mockResolvedValueOnce(
-      new Response(fixture, { status: 200, headers: { 'content-type': 'application/json' } }),
+      new Response(
+        JSON.stringify({
+          facets: {
+            building: [
+              {
+                value: '0/HELMET/',
+                translated: 'Helmet-kirjastot',
+                count: 360571,
+              },
+              {
+                value: '0/AALTO/',
+                translated: 'Aalto-yliopisto',
+                count: 50000,
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
     );
 
     const request = new Request('http://example.com/mcp', {
@@ -541,74 +519,39 @@ describe('worker', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         method: 'callTool',
-        params: { name: 'list_organizations', arguments: { query: 'Seinäjoki' } },
+        params: { name: 'list_organizations', arguments: {} },
       }),
     });
 
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
-    if (!payload.result) {
-      throw new Error(`Missing result in payload: ${JSON.stringify(payload)}`);
-    }
-    const tree = payload.result.facets?.building;
-    expect(Array.isArray(tree)).toBe(true);
-
-    const hasLabel = (nodes: unknown[], label: string): boolean => {
-      for (const node of nodes) {
-        if (!node || typeof node !== 'object') {
-          continue;
-        }
-        const record = node as Record<string, unknown>;
-        if (String(record.label) === label) {
-          return true;
-        }
-        if (Array.isArray(record.children) && hasLabel(record.children, label)) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    expect(hasLabel(tree, 'Eepos-kirjastot')).toBe(true);
-    expect(hasLabel(tree, 'Seinäjoki')).toBe(true);
+    expect(payload.result.facets.building.length).toBe(2);
+    expect(payload.result.facets.building[0].value).toBe('0/HELMET/');
+    expect(payload.result.facets.building[0].label).toBe('Helmet-kirjastot');
   });
 
-  it('list_organizations can include path labels', async () => {
+  it('list_organizations filters by query', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
-    const fixture = JSON.stringify({
-      data: {
-        facets: {
-          building: {
-            html: `
-              <ul class="facet-tree">
-                <li class="facet-tree__parent">
-                  <span class="facet-tree__item-container">
-                    <span class="facet js-facet-item facetOR">
-                      <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%220%2FEepos%2F%22" data-title="Eepos-kirjastot" data-count="360571">
-                        <span class="facet-value icon-link__label">Eepos-kirjastot</span>
-                      </a>
-                    </span>
-                  </span>
-                  <ul>
-                    <li class="facet-tree__parent">
-                      <span class="facet-tree__item-container">
-                        <span class="facet js-facet-item facetOR">
-                          <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%221%2FEepos%2F19%2F%22" data-title="Seinäjoki" data-count="2947">
-                            <span class="facet-value icon-link__label">Seinäjoki</span>
-                          </a>
-                        </span>
-                      </span>
-                    </li>
-                  </ul>
-                </li>
-              </ul>
-            `,
-          },
-        },
-      },
-    });
     mockFetch.mockResolvedValueOnce(
-      new Response(fixture, { status: 200, headers: { 'content-type': 'application/json' } }),
+      new Response(
+        JSON.stringify({
+          facets: {
+            building: [
+              {
+                value: '0/HELMET/',
+                translated: 'Helmet-kirjastot',
+                count: 360571,
+              },
+              {
+                value: '0/AALTO/',
+                translated: 'Aalto-yliopisto',
+                count: 50000,
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
     );
 
     const request = new Request('http://example.com/mcp', {
@@ -618,69 +561,35 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'list_organizations',
-          arguments: { query: 'Seinäjoki', include_paths: true },
+          arguments: { query: 'Aalto' },
         },
       }),
     });
 
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
-    const tree = payload.result.facets?.building ?? [];
-    const hasPath = (nodes: unknown[]): boolean => {
-      for (const node of nodes) {
-        if (!node || typeof node !== 'object') {
-          continue;
-        }
-        const record = node as Record<string, unknown>;
-        const path = record.path;
-        if (typeof path === 'string' && path.includes('Eepos-kirjastot')) {
-          return true;
-        }
-        if (Array.isArray(record.children) && hasPath(record.children)) {
-          return true;
-        }
-      }
-      return false;
-    };
-    expect(hasPath(tree)).toBe(true);
+    // Filter is applied locally after fetching all organizations
+    expect(payload.result.facets.building.length).toBeGreaterThanOrEqual(1);
+    expect(payload.result.facets.building.some((org: { value: string }) => org.value === '0/AALTO/')).toBe(true);
   });
 
   it('list_organizations can return compact results', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
-    const fixture = JSON.stringify({
-      data: {
-        facets: {
-          building: {
-            html: `
-              <ul class="facet-tree">
-                <li class="facet-tree__parent">
-                  <span class="facet-tree__item-container">
-                    <span class="facet js-facet-item facetOR">
-                      <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%220%2FEepos%2F%22" data-title="Eepos-kirjastot" data-count="360571">
-                        <span class="facet-value icon-link__label">Eepos-kirjastot</span>
-                      </a>
-                    </span>
-                  </span>
-                  <ul>
-                    <li class="facet-tree__parent">
-                      <span class="facet-tree__item-container">
-                        <span class="facet js-facet-item facetOR">
-                          <a class="main-link icon-link" href="?filter%5B%5D=%7Ebuilding%3A%221%2FEepos%2F19%2F%22" data-title="Seinäjoki" data-count="2947">
-                            <span class="facet-value icon-link__label">Seinäjoki</span>
-                          </a>
-                        </span>
-                      </span>
-                    </li>
-                  </ul>
-                </li>
-              </ul>
-            `,
-          },
-        },
-      },
-    });
     mockFetch.mockResolvedValueOnce(
-      new Response(fixture, { status: 200, headers: { 'content-type': 'application/json' } }),
+      new Response(
+        JSON.stringify({
+          facets: {
+            building: [
+              {
+                value: '0/HELMET/',
+                translated: 'Helmet-kirjastot',
+                count: 360571,
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
     );
 
     const request = new Request('http://example.com/mcp', {
@@ -690,7 +599,7 @@ describe('worker', () => {
         method: 'callTool',
         params: {
           name: 'list_organizations',
-          arguments: { query: 'Eepos', compact: true },
+          arguments: { query: 'Helmet', compact: true },
         },
       }),
     });
@@ -698,8 +607,9 @@ describe('worker', () => {
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
     const building = payload.result.facets.building[0];
+    // No children in new API-based implementation (top-level only)
     expect(building.children).toBeUndefined();
-    expect(Object.keys(building).sort()).toEqual(['count', 'label', 'value']);
+    expect(Object.keys(building).sort()).toEqual(['label', 'value']);
     expect(payload.result.meta.compact).toBe(true);
   });
 

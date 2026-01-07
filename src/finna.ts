@@ -17,6 +17,7 @@ type SearchParams = {
   filters?: FilterInput;
   facets?: string[];
   facetFilters?: string[];
+  facet_limit?: number;
   fields?: string[];
 };
 
@@ -49,6 +50,9 @@ export function buildSearchUrl(params: SearchParams): string {
   }
   if (params.lng) {
     url.searchParams.set('lng', params.lng);
+  }
+  if (params.facet_limit) {
+    url.searchParams.set('facetLimit', String(params.facet_limit));
   }
   appendFields(url, params.fields);
   appendFilters(url, params.filters);

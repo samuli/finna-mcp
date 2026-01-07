@@ -163,13 +163,13 @@ const ListToolsResponse = {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Content types (format IDs). Use a string for one format, or an array for OR selection. Examples: "0/Book/", "0/Book/eBook/", ["0/Image/","0/Video/"]',
+              'Content types (top-level format codes). Use a string for one format, or an array for OR selection. Examples: "0/Book/", "0/Image/", ["0/Image/","0/Video/"]. Discover codes via facets=["format"].',
           },
           organization: {
             type: ['string', 'array'],
             items: { type: 'string' },
             description:
-              'Organization IDs (Use list_organizations to discover IDs. Labels/names may be resolved to IDs, but ambiguous matches will warn).'
+              'Organization IDs (Use list_organizations to discover. Always use exact VALUE strings like "0/Helmet/", NOT labels like "Helsinki Libraries").'
           },
           language: {
             type: ['string', 'array'],
@@ -186,7 +186,7 @@ const ListToolsResponse = {
           filters: {
             type: 'object',
             description:
-              'Structured filters: {include:{field:[values]}, any:{field:[values]}, exclude:{field:[values]}}. For organizations, use list_organizations value strings in include.organization (labels may be resolved but should not be relied on). Example for books: include.format=["0/Book/"]. Use exclude.format=[...] to drop formats. Note that filter values are case sensitive need to match exactly to those used by Finna.',
+              'Structured filters: {include:{field:[values]}, any:{field:[values]}, exclude:{field:[values]}}. Use exact VALUE codes from list_organizations or facets. Example: include.format=["0/Book/"], include.building=["0/Helmet/"]. Filter values are case-sensitive and must match exactly.',
           },
           facets: {
             type: 'array',
@@ -777,12 +777,6 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     year,
   });
   const buildingWarnings = collectHierarchicalFilterWarnings(normalizedFilters);
-  const normalizedBuilding = await normalizeBuildingFiltersWithCache(
-    normalizedFilters,
-    env,
-    lng,
-  );
-  normalizedFilters = normalizedBuilding.filters;
   const normalizedSort = normalizeSort(sort);
   const selectedFields = useCompactOutput
     ? COMPACT_SEARCH_API_FIELDS
@@ -801,6 +795,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     lng,
     filters: normalizedFilters,
     facets,
+    facet_limit,
     fields: apiFields,
   });
 
@@ -839,8 +834,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     resultCount: payload.resultCount,
     records: cleaned,
     requestedOnline: available_online === true || hasOnlineFilter(normalizedFilters),
-    extraInfo: normalizedBuilding.info,
-    extraWarning: buildingWarnings.concat(normalizedBuilding.warnings),
+    extraWarning: buildingWarnings,
   });
 
   return json({
@@ -909,80 +903,50 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   }
   const { query, type, lng, filters, max_depth, include_paths, compact } = parsed.data;
   const normalizedFilters = normalizeFilters(filters);
-  const cacheLng = lng ?? 'fi';
-  const cacheKey = buildOrganizationsCacheKey(cacheLng, type);
-  const cached =
-    env.FINNA_MCP_DISABLE_CACHE === '1'
-      ? null
-      : await readOrganizationsCache(env, cacheKey);
-  if (cached) {
-    if (!query && !normalizedFilters) {
-      const depth = max_depth ?? 2;
-      return json({
-        result: finalizeOrganizations(
-          compactOrganizations(
-            pruneOrganizationsDepth(
-              cached,
-              depth,
-              max_depth ? 'max_depth' : 'unfiltered',
-            ),
-            compact,
-          ),
-          include_paths,
-        ),
-      });
-    }
-    const filtered = filterOrganizationsPayload(cached, query, normalizedFilters);
-    if (filtered) {
-      return json({
-        result: finalizeOrganizations(
-          compactOrganizations(filtered, compact),
-          include_paths,
-        ),
-      });
-    }
-  }
-  const uiPayload = await fetchUiOrganizations(cacheLng, type, env.FINNA_UI_BASE);
-  const filtered = filterOrganizationsPayload(uiPayload, query, normalizedFilters);
-  if (env.FINNA_MCP_DISABLE_CACHE !== '1') {
-    await writeOrganizationsCache(env, cacheKey, uiPayload);
-  }
-  let result = filtered ?? uiPayload;
+
+  // Use search API with building facet to get organizations
+  const url = buildSearchUrl({
+    apiBase: env.FINNA_API_BASE,
+    lookfor: '',
+    type,
+    lng,
+    facets: ['building'],
+    facet_limit: 500,
+    limit: 0,
+  });
+
+  const payload = await fetchJson(url) as {
+    facets?: {
+      building?: Array<{ value?: string; translated?: string; count?: number }>;
+    };
+  };
+
+  // Transform API format to match FacetEntry structure
+  const buildingEntries = (payload.facets?.building ?? [])
+    .filter((entry) => entry.value && entry.translated)
+    .map((entry) => ({
+      value: entry.value!,
+      label: entry.translated!,
+      translated: entry.translated!,
+    }));
+
+  const apiPayload = {
+    status: 'OK',
+    resultCount: buildingEntries.length,
+    facets: { building: buildingEntries },
+  };
+
+  const filtered = filterOrganizationsPayload(apiPayload, query, normalizedFilters);
+  let result = filtered ?? apiPayload;
+
   if (max_depth) {
     result = pruneOrganizationsDepth(result, max_depth, 'max_depth');
   } else if (!query && !normalizedFilters) {
-    result = pruneOrganizationsDepth(result, 2, 'unfiltered');
+    result = pruneOrganizationsDepth(result, 1, 'unfiltered');
   }
+
   result = compactOrganizations(result, compact);
   return json({ result: finalizeOrganizations(result, include_paths) });
-}
-
-async function fetchUiOrganizations(
-  lng: string,
-  type: string,
-  uiBase?: string,
-): Promise<Record<string, unknown>> {
-  const url = new URL('/AJAX/JSON', uiBase ?? 'https://finna.fi');
-  url.searchParams.set('lookfor', '');
-  url.searchParams.set('type', type);
-  url.searchParams.set('method', 'getSideFacets');
-  url.searchParams.set('searchClassId', 'Solr');
-  url.searchParams.set('location', 'side');
-  url.searchParams.set('configIndex', '0');
-  url.searchParams.set('querySuppressed', '0');
-  url.searchParams.set('extraFields', 'handler,limit,selectedShards,sort,view');
-  url.searchParams.append('enabledFacets[]', 'building');
-  if (lng) {
-    url.searchParams.set('lng', lng);
-  }
-
-  const payload = await fetchJson(url.toString());
-  const html = findHtmlInAjaxPayload(payload);
-  if (!html) {
-    return { status: 'ERROR', facets: { building: [] } };
-  }
-  const tree = parseFacetTreeFromHtml(html);
-  return { status: 'OK', resultCount: tree.length, facets: { building: tree } };
 }
 
 function normalizeFilters(filters?: unknown): FilterInput | undefined {
@@ -1207,99 +1171,6 @@ function safeDecodeURIComponent(value: string): string | null {
   }
 }
 
-async function normalizeBuildingFiltersWithCache(
-  filters: FilterInput | undefined,
-  env: Env,
-  lng?: string,
-): Promise<{ filters: FilterInput | undefined; info?: string; warnings: string[] }> {
-  const warnings: string[] = [];
-  if (!filters) {
-    return { filters, warnings };
-  }
-  const buildingValues = collectHierarchicalFilterValues(filters);
-  if (buildingValues.length === 0) {
-    return { filters, warnings };
-  }
-  if (!env.CACHE_BUCKET) {
-    return { filters, warnings };
-  }
-  const cacheKey = buildOrganizationsCacheKey(lng ?? 'fi', 'AllFields');
-  const cached = await readOrganizationsCache(env, cacheKey);
-  if (!cached) {
-    return { filters, warnings };
-  }
-  const entries = collectFacetEntries(cached.facets?.building);
-  if (entries.length === 0) {
-    return { filters, warnings };
-  }
-  const canonicalMap = new Map<string, string | null>();
-  for (const entry of entries) {
-    const value = entry.value;
-    if (!value) {
-      continue;
-    }
-    const key = value.toLowerCase();
-    if (!canonicalMap.has(key)) {
-      canonicalMap.set(key, value);
-    } else if (canonicalMap.get(key) !== value) {
-      canonicalMap.set(key, null);
-    }
-  }
-  const labelIndex = buildOrganizationLabelIndex(entries);
-  const replacements: Array<{ from: string; to: string }> = [];
-  const fuzzyReplacements: Array<{ from: string; to: string }> = [];
-  const normalizeBucket = (bucket?: Record<string, string[]>) => {
-    if (!bucket?.building) return;
-    bucket.building = bucket.building.map((value) => {
-      if (!value.includes('/')) {
-        const resolved = resolveOrganizationLabel(value, labelIndex);
-        if (resolved?.value) {
-          fuzzyReplacements.push({ from: value, to: resolved.value });
-          return resolved.value;
-        }
-        if (resolved?.warning) {
-          warnings.push(resolved.warning);
-        }
-        return value;
-      }
-      const direct = canonicalMap.get(value.toLowerCase());
-      if (direct && direct !== value) {
-        replacements.push({ from: value, to: direct });
-        return direct;
-      }
-      if (direct === null) {
-        warnings.push(
-          `Building filter "${value}" matched multiple organization values; leaving as-is.`,
-        );
-      }
-      return value;
-    });
-  };
-  normalizeBucket(filters.include);
-  normalizeBucket(filters.any);
-  normalizeBucket(filters.exclude);
-
-  const infoParts: string[] = [];
-  if (replacements.length > 0) {
-    infoParts.push(
-      `Normalized organization codes to canonical case (${replacements
-        .slice(0, 3)
-        .map((entry) => `${entry.from} → ${entry.to}`)
-        .join(', ')}${replacements.length > 3 ? ', …' : ''}).`,
-    );
-  }
-  if (fuzzyReplacements.length > 0) {
-    infoParts.push(
-      `Resolved organization labels to codes (${fuzzyReplacements
-        .slice(0, 3)
-        .map((entry) => `${entry.from} → ${entry.to}`)
-        .join(', ')}${fuzzyReplacements.length > 3 ? ', …' : ''}).`,
-    );
-  }
-  const info = infoParts.length > 0 ? infoParts.join(' ') : undefined;
-  return { filters, info, warnings };
-}
-
 function collectHierarchicalFilterWarnings(filters?: FilterInput): string[] {
   if (!filters) return [];
   const values = collectHierarchicalFilterValues(filters);
@@ -1382,55 +1253,6 @@ function collectFacetEntries(entries: unknown, acc: FacetEntry[] = []): FacetEnt
     }
   }
   return acc;
-}
-
-function buildOrganizationLabelIndex(entries: FacetEntry[]): Map<string, string[]> {
-  const index = new Map<string, string[]>();
-  for (const entry of entries) {
-    const labels = [entry.label, entry.translated].filter(Boolean);
-    for (const label of labels) {
-      const key = label.toLowerCase();
-      const list = index.get(key) ?? [];
-      list.push(entry.value);
-      index.set(key, list);
-    }
-  }
-  return index;
-}
-
-function resolveOrganizationLabel(
-  input: string,
-  index: Map<string, string[]>,
-): { value?: string; warning?: string } | null {
-  const query = input.trim().toLowerCase();
-  if (!query) {
-    return null;
-  }
-  const exact = index.get(query);
-  if (exact && exact.length === 1) {
-    return { value: exact[0] };
-  }
-  if (exact && exact.length > 1) {
-    return {
-      warning: `Organization label "${input}" matched multiple organization codes; use list_organizations to pick the right one.`,
-    };
-  }
-  const matches: string[] = [];
-  for (const [label, values] of index.entries()) {
-    if (label.includes(query)) {
-      matches.push(...values);
-    }
-  }
-  const unique = Array.from(new Set(matches));
-  if (unique.length === 1) {
-    return { value: unique[0] };
-  }
-  if (unique.length > 1) {
-    return {
-      warning: `Organization label "${input}" matched multiple organization codes; use list_organizations to pick the right one.`,
-    };
-  }
-  return null;
 }
 
 function buildHelpPayload(): Record<string, unknown> {
@@ -1516,9 +1338,7 @@ The usage rights of materials descriptions and cover images of library materials
 ## Common record formats (examples)
 Use these as examples and discover more via \`facets\` + \`facet[]=format\`.
 When requesting hierarchical facets (like \`building\` or \`format\`), you can cap the response with \`facet_limit\` (default 30).
-- \`0/Book/\` — Books (all)
-- \`0/Book/eBook/\` — E-books
-- \`0/Book/BookSection/\` — Book sections / chapters
+- \`0/Book/\` — Books
 - \`0/Sound/\` — Sound recordings / audiobooks
 - \`0/Video/\` — Video / film
 - \`0/Image/\` — Images / photographs
@@ -1528,18 +1348,23 @@ When requesting hierarchical facets (like \`building\` or \`format\`), you can c
 - \`0/PhysicalObject/\` — Physical objects
 - \`0/MusicalScore/\` — Musical scores
 
+**Note**: Only top-level format codes (0/...) are supported. Use facets to discover all available format codes dynamically:
+\`\`\`json
+{"facets": ["format"], "facet_limit": 50, "limit": 0}
+\`\`\`
+
 ## Record Field Descriptions
 
 Note that metadata varies between records and formats.
 
 ### Organization Structure
 
-Organizations have hierarchical codes:
-- 0/Helmet/ - Helsinki Metropolitan Area Libraries (top level)
-- 1/Helmet/h/ - Helsinki city (second level)
-- 2/Helmet/h/h00l/ - Specific location (third level)
+Organizations use VALUE codes like:
+- 0/Helmet/ - Helsinki Metropolitan Area Libraries
+- 0/AALTO/ - Aalto University
+- 0/HKM/ - Helsinki City Museum
 
-**For filtering, always use the VALUE string (e.g., "0/Helmet/"), NOT the label or path.**
+**For filtering, always use the exact VALUE string (e.g., "0/Helmet/"), NOT the label.**
 
 ### Creators/People
 - **creators** - Merged, compact creator list (name + role when available)
@@ -1577,7 +1402,12 @@ Note: creators list is capped in compact results (default 5).
 ## Troubleshooting
 
 **No results with organization filter?**
-→ Prefer the VALUE code (0/HKM/). Labels may be resolved, but ambiguous matches will warn.
+→ Use exact VALUE codes like "0/HKM/" from list_organizations, NOT labels like "Helsinki City Museum"
+→ Use facets=["building"] to verify valid building codes
+
+**No results with format filter?**
+→ Use exact top-level codes like "0/Book/", NOT hierarchical codes like "0/Book/eBook/"
+→ Use facets=["format"] to discover all valid format codes
 
 **Multi-term query warning?**
 → Try search_mode="advanced" with advanced_operator="AND"
@@ -1707,48 +1537,6 @@ function normalizeSort(sort?: string): string | undefined {
   return sort;
 }
 
-
-const ORGANIZATIONS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-
-function buildOrganizationsCacheKey(lng: string, type: string): string {
-  return `list_organizations:${lng}:${type}`;
-}
-
-async function readOrganizationsCache(
-  env: Env,
-  key: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    const object = await env.CACHE_BUCKET.get(key);
-    if (!object) {
-      return null;
-    }
-    const text = await object.text();
-    const parsed = JSON.parse(text) as { ts?: number; payload?: Record<string, unknown> };
-    const ts = typeof parsed.ts === 'number' ? parsed.ts : 0;
-    if (!parsed.payload || Date.now() - ts > ORGANIZATIONS_CACHE_TTL_MS) {
-      return null;
-    }
-    return parsed.payload;
-  } catch {
-    return null;
-  }
-}
-
-async function writeOrganizationsCache(
-  env: Env,
-  key: string,
-  payload: Record<string, unknown>,
-): Promise<void> {
-  try {
-    await env.CACHE_BUCKET.put(
-      key,
-      JSON.stringify({ ts: Date.now(), payload }),
-    );
-  } catch {
-    // Best-effort cache write.
-  }
-}
 
 function filterOrganizationsPayload(
   payload: Record<string, unknown>,
@@ -2047,181 +1835,6 @@ function foldFinnish(value: string): string {
   return value.replace(/[äÄ]/g, 'a').replace(/[öÖ]/g, 'o').replace(/[åÅ]/g, 'a');
 }
 
-function findHtmlInAjaxPayload(payload: Record<string, unknown>): string | null {
-  const candidates: string[] = [];
-  const queue: unknown[] = [payload];
-  while (queue.length > 0) {
-    const item = queue.shift();
-    if (!item) {
-      continue;
-    }
-    if (typeof item === 'string') {
-      if (item.includes('<') && item.length > 200) {
-        candidates.push(item);
-      }
-      continue;
-    }
-    if (Array.isArray(item)) {
-      queue.push(...item);
-      continue;
-    }
-    if (typeof item === 'object') {
-      for (const value of Object.values(item as Record<string, unknown>)) {
-        queue.push(value);
-      }
-    }
-  }
-  if (candidates.length === 0) {
-    return null;
-  }
-  candidates.sort((a, b) => b.length - a.length);
-  return candidates[0];
-}
-
-type UiFacetNode = {
-  label: string;
-  value?: string;
-  count?: number;
-  children?: UiFacetNode[];
-};
-
-function parseFacetTreeFromHtml(html: string): UiFacetNode[] {
-  const tokens = html.match(/<[^>]+>|[^<]+/g) ?? [];
-  const stack: Array<{ node: UiFacetNode; text: string[] }> = [];
-  const roots: UiFacetNode[] = [];
-
-  const pushNode = (node: UiFacetNode) => {
-    if (stack.length === 0) {
-      roots.push(node);
-    } else {
-      const parent = stack[stack.length - 1].node;
-      if (!parent.children) {
-        parent.children = [];
-      }
-      parent.children.push(node);
-    }
-  };
-
-  for (const token of tokens) {
-    if (token.startsWith('<')) {
-      const lower = token.toLowerCase();
-      if (lower.startsWith('<li')) {
-        const node: UiFacetNode = { label: '' };
-        const value =
-          extractAttr(token, 'data-facet-value') ?? extractAttr(token, 'data-value');
-        if (value) {
-          node.value = value;
-        }
-        const countAttr = extractAttr(token, 'data-count');
-        if (countAttr && /^\d+$/.test(countAttr)) {
-          node.count = Number(countAttr);
-        }
-        stack.push({ node, text: [] });
-        continue;
-      }
-      if (lower.startsWith('</li')) {
-        const item = stack.pop();
-        if (item) {
-          const combined = decodeHtmlEntities(item.text.join(' '));
-          const { label, count } = extractLabelAndCount(combined);
-          item.node.label = item.node.label || label;
-          if (count !== undefined && item.node.count === undefined) {
-            item.node.count = count;
-          }
-          if (item.node.label || (item.node.children && item.node.children.length > 0)) {
-            pushNode(item.node);
-          }
-        }
-        continue;
-      }
-      if (stack.length > 0) {
-        const node = stack[stack.length - 1].node;
-        const value =
-          extractAttr(token, 'data-facet-value') ?? extractAttr(token, 'data-value');
-        if (value) {
-          node.value = node.value ?? value;
-        }
-        const countAttr = extractAttr(token, 'data-count');
-        if (countAttr && /^\d+$/.test(countAttr)) {
-          node.count = node.count ?? Number(countAttr);
-        }
-        const titleAttr = extractAttr(token, 'data-title');
-        if (titleAttr) {
-          node.label = node.label || decodeHtmlEntities(titleAttr);
-        }
-        const hrefAttr = extractAttr(token, 'href');
-        if (hrefAttr && !node.value) {
-          const decoded = decodeHtmlEntities(hrefAttr);
-          const extracted = extractBuildingValueFromHref(decoded);
-          if (extracted) {
-            node.value = extracted;
-          }
-        }
-      }
-      continue;
-    }
-    if (stack.length > 0) {
-      const text = token.replace(/\s+/g, ' ').trim();
-      if (text) {
-        stack[stack.length - 1].text.push(text);
-      }
-    }
-  }
-
-  return roots;
-}
-
-function extractAttr(tag: string, name: string): string | null {
-  const pattern = new RegExp(`${name}=["']([^"']+)["']`, 'i');
-  const match = tag.match(pattern);
-  return match ? match[1] : null;
-}
-
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-}
-
-function extractLabelAndCount(text: string): { label: string; count?: number } {
-  const cleaned = text.replace(/\s+/g, ' ').trim();
-  if (!cleaned) {
-    return { label: '' };
-  }
-  const matches = cleaned.match(/\b\d[\d\s]*\b/g) ?? [];
-  if (matches.length === 0) {
-    return { label: cleaned };
-  }
-  const last = matches[matches.length - 1];
-  const count = Number(last.replace(/\s+/g, ''));
-  const label = cleaned.replace(last, '').replace(/\s+/g, ' ').trim();
-  return Number.isFinite(count) ? { label, count } : { label: cleaned };
-}
-
-function extractBuildingValueFromHref(href: string): string | null {
-  try {
-    const url = new URL(href, 'https://finna.fi');
-    const filters = url.searchParams.getAll('filter[]');
-    for (const filter of filters) {
-      const match = filter.match(/building:"([^"]+)"/i);
-      if (match) {
-        return match[1];
-      }
-    }
-  } catch {
-    // ignore
-  }
-  const match = href.match(/building%3A%22([^%]+)%22/i);
-  if (match) {
-    return decodeURIComponent(match[1]);
-  }
-  return null;
-}
-
 async function fetchJson(url: string): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
     method: 'GET',
@@ -2350,17 +1963,19 @@ function buildSearchMeta(options: {
     records,
   } = options;
   const selectedFields = fields ?? resolveSearchFieldsPreset(fields_preset);
-  const resourceFields = new Set(['images', 'urls', 'onlineUrls']);
+  const resourceFields = new Set(['images', 'urls', 'onlineUrls', 'links']);
   const includesResourceFields =
     (!fieldsProvided && selectedFields.some((field) => resourceFields.has(field)));
   const hasResourceData = records.some((record) => {
     const images = record.images;
     const urls = record.urls;
     const onlineUrls = record.onlineUrls;
+    const links = record.links;
     return (
       (Array.isArray(images) && images.length > 0) ||
       (Array.isArray(urls) && urls.length > 0) ||
-      (Array.isArray(onlineUrls) && onlineUrls.length > 0)
+      (Array.isArray(onlineUrls) && onlineUrls.length > 0) ||
+      (Array.isArray(links) && links.length > 0)
     );
   });
 
