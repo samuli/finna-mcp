@@ -264,6 +264,9 @@ const ListToolsResponse = {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/spec') {
+      return json(ListToolsResponse);
+    }
     if (url.pathname !== '/v1') {
       return new Response('Not Found', { status: 404 });
     }

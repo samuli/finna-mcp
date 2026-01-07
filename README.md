@@ -8,8 +8,6 @@ MCP server for [Finna](https://finna.fi) - Finnish library, archive, and museum 
 
 - **search_records**: Search with filters, facets, and field selection
 - **get_record**: Fetch full metadata by record ID
-- **resources**: Unified `links` array (images, PDFs, audio, video, external)
-- **organizations**: Hierarchical format codes (e.g., `0/Helmet/`, `1/Helmet/n/`)
 
 ## Deploy to Cloudflare Workers
 
