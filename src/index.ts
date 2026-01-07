@@ -477,7 +477,6 @@ function buildOrganizationSummary(record: Record<string, unknown>): Record<strin
     primary: label || undefined,
     code: code || undefined,
     locations: locationCount || undefined,
-    note: 'Use get_record for the full organization list.',
   };
 }
 

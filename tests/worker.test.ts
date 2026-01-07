@@ -159,7 +159,6 @@ describe('worker', () => {
       primary: 'Test Library',
       code: '0/TEST/',
       locations: 1,
-      note: 'Use get_record for the full organization list.',
     });
     const linkUrls = payload.result.records[0].links.map((link: { url?: string }) => link?.url);
     expect(linkUrls).toContain('https://api.finna.fi/Cover/Show?id=1');
