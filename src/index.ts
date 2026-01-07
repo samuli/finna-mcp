@@ -10,11 +10,8 @@ import {
 } from './finna.js';
 
 type Env = {
-  DB: D1Database;
-  CACHE_BUCKET: R2Bucket;
   FINNA_API_BASE?: string;
   FINNA_UI_BASE?: string;
-  FINNA_MCP_DISABLE_CACHE?: string;
 };
 
 const HIERARCHICAL_FACET_FIELDS = new Set([

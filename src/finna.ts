@@ -86,18 +86,6 @@ export function enrichRecordResources(record: Record<string, unknown>) {
   return pruneEmptyFields(merged);
 }
 
-export function extractResourcesFromRecord(
-  record: Record<string, unknown>,
-) {
-  const { resources, resourceCounts } = summarizeResources(record, 3, true);
-  const merged = {
-    id: record.id,
-    resourceCounts,
-    resources,
-  };
-  return pruneEmptyFields(merged);
-}
-
 type CompactLink = {
   url: string;
   type?: string;
