@@ -827,6 +827,7 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
       value: entry.value!,
       label: entry.translated!,
       translated: entry.translated!,
+      count: entry.count,
     }));
 
   const apiPayload = {
