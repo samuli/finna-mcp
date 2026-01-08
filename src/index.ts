@@ -115,7 +115,6 @@ const ListToolsResponse = {
       name: 'search_records',
       description:
       'Search and retrieve metadata over records in Finna.fi. Do not use for libraries/organizations; use list_organizations instead. Use "help" tool to get more information and usage examples.',
-      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
@@ -203,7 +202,6 @@ const ListToolsResponse = {
     {
       name: 'get_record',
       description: 'Get full metadata for one or more records.',
-      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
@@ -223,7 +221,6 @@ const ListToolsResponse = {
       name: 'list_organizations',
       description:
         'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use only the returned code strings in search_records filters.include.organization (name/path are for display, not filtering). Unfiltered results return only the top 2 levels with meta.pruned=true; use query/filters for deeper levels.',
-      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
@@ -253,7 +250,6 @@ const ListToolsResponse = {
       name: 'help',
       description:
         'Show a help guide about Finna.fi, search filters, formats, and common usage patterns.',
-      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {},
@@ -2032,14 +2028,6 @@ type JsonRpcRequest = {
 const SERVER_INFO = {
   name: 'finna-mcp',
   version: '0.1.0',
-  icons: [
-    {
-      url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAATlBMVEWCNYyCNYyFOY6aXaKbXqPAmsX////IpszTuNbOsNLNr9GPS5iTUJuFO4+EOI769/qRTprm1+jj0uXcx9+KQpPEoMj+/f6LRJWJQZOdYqU7xe/TAAAAAXRSTlPzZFJ7wAAAAAFiS0dEBmFmuH0AAAAHdElNRQfqAQgIFzSp+7KAAAAAS0lEQVQY02NgQAeMIMDEzMLCzARmQgRY2YCAFUmAnY2Dk4sZRYCbEQpwCvDw8qEKsLHxC6AICAoJi5BoKCEBUTFxVAEJSUZUASQAAGj/Atwee5ytAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTAxLTA4VDA4OjIzOjUyKzAwOjAw7LvthwAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0wMS0wOFQwODoyMzo1MiswMDowMJ3mVTsAAAAASUVORK5CYII=',
-      mimeType: 'image/png',
-      width: 16,
-      height: 16,
-    },
-  ],
 };
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
