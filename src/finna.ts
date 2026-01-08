@@ -71,6 +71,45 @@ export function buildRecordUrl(params: RecordParams): string {
   return url.toString();
 }
 
+type WebSearchParams = Omit<SearchParams, 'apiBase' | 'fields' | 'facet_limit'> & {
+  uiBase?: string;
+};
+
+export function buildSearchWebUrl(params: WebSearchParams): string {
+  const base = params.uiBase ?? 'https://www.finna.fi';
+  const url = new URL('/search', base);
+  const lookfor = params.lookfor ?? '';
+  if (params.searchMode === 'advanced' && lookfor.trim()) {
+    appendAdvancedSearch(url, lookfor, params.type, params.advancedOperator);
+  } else {
+    url.searchParams.set('lookfor', lookfor);
+    url.searchParams.set('type', params.type);
+  }
+  if (params.page) {
+    url.searchParams.set('page', String(params.page));
+  }
+  if (params.limit !== undefined) {
+    url.searchParams.set('limit', String(params.limit));
+  }
+  if (params.sort) {
+    url.searchParams.set('sort', params.sort);
+  }
+  if (params.lng) {
+    url.searchParams.set('lng', params.lng);
+  }
+  // Web UI uses same filter format as API
+  appendFilters(url, params.filters);
+  // Request facets to be displayed in web UI
+  if (params.facets && params.facets.length > 0) {
+    params.facets.forEach((facet) => url.searchParams.append('facet[]', facet));
+  }
+  // Facet filters for drilling down
+  if (params.facetFilters && params.facetFilters.length > 0) {
+    params.facetFilters.forEach((filter) => url.searchParams.append('facet[]', filter));
+  }
+  return url.toString();
+}
+
 export function enrichRecordResources(record: Record<string, unknown>) {
   const withImages = normalizeRecordImages(record);
   const { resourceCounts, resourceSamples } = summarizeResources(withImages, 3);

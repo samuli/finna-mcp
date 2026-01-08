@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   buildSearchUrl,
+  buildSearchWebUrl,
   buildRecordUrl,
   buildCompactCreators,
   buildCompactLinks,
@@ -685,6 +686,21 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     fields: apiFields,
   });
 
+  // Build web URL for Finna's search interface
+  const webUrl = buildSearchWebUrl({
+    uiBase: env.FINNA_UI_BASE,
+    lookfor: query,
+    type,
+    searchMode: search_mode,
+    advancedOperator: advanced_operator,
+    page,
+    limit,
+    sort: normalizedSort,
+    lng,
+    filters: normalizedFilters,
+    facets,
+  });
+
   const payload = await fetchJson(url);
   const records = limit === 0 ? [] : getRecords(payload);
   const normalized =
@@ -728,6 +744,7 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
       ...result,
       records: cleaned,
       ...(meta ? { meta } : {}),
+      webUrl,
     },
   });
 }
