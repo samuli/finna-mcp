@@ -115,6 +115,7 @@ const ListToolsResponse = {
       name: 'search_records',
       description:
       'Search and retrieve metadata over records in Finna.fi. Do not use for libraries/organizations; use list_organizations instead. Use "help" tool to get more information and usage examples.',
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
@@ -202,6 +203,7 @@ const ListToolsResponse = {
     {
       name: 'get_record',
       description: 'Get full metadata for one or more records.',
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
@@ -221,6 +223,7 @@ const ListToolsResponse = {
       name: 'list_organizations',
       description:
         'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use only the returned code strings in search_records filters.include.organization (name/path are for display, not filtering). Unfiltered results return only the top 2 levels with meta.pruned=true; use query/filters for deeper levels.',
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
@@ -250,6 +253,7 @@ const ListToolsResponse = {
       name: 'help',
       description:
         'Show a help guide about Finna.fi, search filters, formats, and common usage patterns.',
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {},
