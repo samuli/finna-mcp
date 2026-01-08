@@ -796,6 +796,8 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   }
   const { query, type, lng, filters, max_depth, include_paths, compact } = parsed.data;
   const normalizedFilters = normalizeFilters(filters);
+  // Normalize 'value' → 'building' for organization filters
+  const orgFilters = normalizeOrganizationFilters(normalizedFilters);
 
   // Use search API with building facet to get organizations
   const url = buildSearchUrl({
@@ -829,12 +831,12 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
     facets: { building: buildingEntries },
   };
 
-  const filtered = filterOrganizationsPayload(apiPayload, query, normalizedFilters);
+  const filtered = filterOrganizationsPayload(apiPayload, query, orgFilters);
   let result = filtered ?? apiPayload;
 
   if (max_depth) {
     result = pruneOrganizationsDepth(result, max_depth, 'max_depth');
-  } else if (!query && !normalizedFilters) {
+  } else if (!query && !orgFilters) {
     result = pruneOrganizationsDepth(result, 1, 'unfiltered');
   }
 
@@ -875,6 +877,47 @@ function normalizeFilters(filters?: unknown): FilterInput | undefined {
     }
   }
   return Object.keys(include).length > 0 ? { include } : undefined;
+}
+
+// For list_organizations, normalize 'value' filter key to 'building'
+// since the building facet is what contains organizations
+function normalizeOrganizationFilters(filters?: FilterInput): FilterInput | undefined {
+  if (!filters) {
+    return undefined;
+  }
+  const result: FilterInput = {};
+  const mapBucket = (bucket?: Record<string, string[]>) => {
+    if (!bucket) {
+      return undefined;
+    }
+    const mapped: Record<string, string[]> = {};
+    for (const [key, values] of Object.entries(bucket)) {
+      // Map 'value' → 'building' for organization filters
+      const mappedKey = key === 'value' ? 'building' : key;
+      mapped[mappedKey] = values;
+    }
+    return Object.keys(mapped).length > 0 ? mapped : undefined;
+  };
+
+  if (filters.include) {
+    const mapped = mapBucket(filters.include);
+    if (mapped) {
+      result.include = mapped;
+    }
+  }
+  if (filters.any) {
+    const mapped = mapBucket(filters.any);
+    if (mapped) {
+      result.any = mapped;
+    }
+  }
+  if (filters.exclude) {
+    const mapped = mapBucket(filters.exclude);
+    if (mapped) {
+      result.exclude = mapped;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function mergeTopLevelFilters(
