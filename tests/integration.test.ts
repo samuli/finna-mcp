@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 
-const baseUrl = process.env.FINNA_MCP_BASE_URL ?? 'http://127.0.0.1:8787/v1';
+const baseUrl = process.env.FINNA_MCP_BASE_URL ?? 'http://127.0.0.1:8787/mcp';
 const shouldRun = process.env.RUN_INTEGRATION === '1';
 
 const suite = shouldRun ? describe : describe.skip;

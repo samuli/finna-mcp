@@ -2,7 +2,7 @@
 
 MCP server for [Finna](https://finna.fi) - Finnish library, archive, and museum search.
 
-> **Note**: This is not an official Finna project. Uses the [Finna API](https://api.finna.fi/v1).
+> **Note**: This is not an official Finna project. Uses the [Finna API](https://api.finna.fi/mcp).
 
 ## Features
 
@@ -23,13 +23,13 @@ npm run deploy
 ## Configure MCP client
 
 Add this URL to your MCP client (Claude Desktop, etc):
-`https://finna-mcp.<your-subdomain>.workers.dev/v1`
+`https://finna-mcp.<your-subdomain>.workers.dev/mcp`
  
 
 ## Local Development
 
 ```bash
-npm run dev          # http://localhost:8787/v1
+npm run dev          # http://localhost:8787/mcp
 npm test             # unit tests
 npm run test:integration  # live tests
 curl http://localhost:8787/spec | jq .  # view tool schema
@@ -42,7 +42,7 @@ curl http://localhost:8787/spec | jq .  # view tool schema
 Search for records with filters and facets.
 
 ```bash
-curl -X POST http://localhost:8787/v1 \
+curl -X POST http://localhost:8787/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -77,7 +77,7 @@ curl -X POST http://localhost:8787/v1 \
 Fetch full metadata for one or more records.
 
 ```bash
-curl -X POST http://localhost:8787/v1 \
+curl -X POST http://localhost:8787/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",

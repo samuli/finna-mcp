@@ -264,7 +264,7 @@ export default {
     if (url.pathname === '/spec') {
       return json(ListToolsResponse);
     }
-    if (url.pathname !== '/v1') {
+    if (url.pathname !== '/mcp') {
       return new Response('Not Found', { status: 404 });
     }
     const structuredOutput = url.searchParams.get('structured_output') === '1';
