@@ -409,7 +409,7 @@ describe('worker', () => {
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
     expect(payload.result.facets.building.length).toBe(1);
-    expect(payload.result.facets.building[0].value).toBe('0/KANSALLISKIRJASTO/');
+    expect(payload.result.facets.building[0].code).toBe('0/KANSALLISKIRJASTO/');
     const calledUrl = String(mockFetch.mock.calls[0][0]);
     expect(calledUrl).toContain('/search');
     expect(calledUrl).toContain('facet%5B%5D=building');
@@ -525,8 +525,8 @@ describe('worker', () => {
     const response = await worker.fetch(request, baseEnv);
     const payload = await response.json();
     expect(payload.result.facets.building.length).toBe(2);
-    expect(payload.result.facets.building[0].value).toBe('0/HELMET/');
-    expect(payload.result.facets.building[0].label).toBe('Helmet-kirjastot');
+    expect(payload.result.facets.building[0].code).toBe('0/HELMET/');
+    expect(payload.result.facets.building[0].name).toBe('Helmet-kirjastot');
   });
 
   it('list_organizations filters by query', async () => {
@@ -569,7 +569,7 @@ describe('worker', () => {
     const payload = await response.json();
     // Filter is applied locally after fetching all organizations
     expect(payload.result.facets.building.length).toBeGreaterThanOrEqual(1);
-    expect(payload.result.facets.building.some((org: { value: string }) => org.value === '0/AALTO/')).toBe(true);
+    expect(payload.result.facets.building.some((org: { code: string }) => org.code === '0/AALTO/')).toBe(true);
   });
 
   it('list_organizations can return compact results', async () => {
@@ -608,7 +608,7 @@ describe('worker', () => {
     const building = payload.result.facets.building[0];
     // No children in new API-based implementation (top-level only)
     expect(building.children).toBeUndefined();
-    expect(Object.keys(building).sort()).toEqual(['label', 'value']);
+    expect(Object.keys(building).sort()).toEqual(['code', 'name']);
     expect(payload.result.meta.compact).toBe(true);
   });
 

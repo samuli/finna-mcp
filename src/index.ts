@@ -220,7 +220,7 @@ const ListToolsResponse = {
     {
       name: 'list_organizations',
       description:
-        'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use only the returned value strings in search_records filters.include.organization (path labels are for display, not filtering). Unfiltered results return only the top 2 levels with meta.pruned=true; use query/filters for deeper levels.',
+        'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use only the returned code strings in search_records filters.include.organization (name/path are for display, not filtering). Unfiltered results return only the top 2 levels with meta.pruned=true; use query/filters for deeper levels.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -738,9 +738,13 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
     extraWarning: buildingWarnings,
   });
 
+  const baseResult = stripFacetsIfUnused(payload, facets, facet_limit ?? DEFAULT_FACET_LIMIT);
+  // Rename facet fields (value→code, label→name) for consistency
+  const result = renameOrganizationFields(baseResult);
+
   return json({
     result: {
-      ...stripFacetsIfUnused(payload, facets, facet_limit ?? DEFAULT_FACET_LIMIT),
+      ...result,
       records: cleaned,
       ...(meta ? { meta } : {}),
     },
@@ -841,7 +845,57 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   }
 
   result = compactOrganizations(result, compact);
-  return json({ result: finalizeOrganizations(result, include_paths) });
+  const finalized = finalizeOrganizations(result, include_paths);
+  // Rename value→code, label→name for consistency with get_record organizations
+  const normalized = renameOrganizationFields(finalized);
+  return json({ result: normalized });
+}
+
+// Rename value→code, label→name for all hierarchical facet entries
+function renameOrganizationFields(payload: Record<string, unknown>): Record<string, unknown> {
+  const facets = payload.facets as Record<string, unknown> | undefined;
+  if (!facets || typeof facets !== 'object') {
+    return payload;
+  }
+
+  const renameEntry = (entry: unknown): unknown => {
+    if (!entry || typeof entry !== 'object') {
+      return entry;
+    }
+    const record = entry as Record<string, unknown>;
+    const renamed: Record<string, unknown> = {};
+    // Rename value → code
+    if (typeof record.value === 'string') {
+      renamed.code = record.value;
+    }
+    // Rename label/translated → name
+    renamed.name = record.label ?? record.translated;
+    // Keep other fields (count, children, path, etc.)
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'value' && key !== 'label' && key !== 'translated') {
+        renamed[key] = value;
+      }
+    }
+    // Recursively rename children
+    if (Array.isArray(record.children)) {
+      renamed.children = record.children.map(renameEntry);
+    }
+    return renamed;
+  };
+
+  const renamedFacets: Record<string, unknown> = {};
+  for (const [facetKey, facetValue] of Object.entries(facets)) {
+    if (Array.isArray(facetValue)) {
+      renamedFacets[facetKey] = facetValue.map(renameEntry);
+    } else {
+      renamedFacets[facetKey] = facetValue;
+    }
+  }
+
+  return {
+    ...payload,
+    facets: renamedFacets,
+  };
 }
 
 function normalizeFilters(filters?: unknown): FilterInput | undefined {
