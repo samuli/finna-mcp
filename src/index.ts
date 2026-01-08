@@ -2033,6 +2033,7 @@ type JsonRpcRequest = {
 const SERVER_INFO = {
   name: 'finna-mcp',
   version: '0.1.0',
+  title: 'Finna.fi MCP server: a unified search across Finnish libraries, archives, and museums.',
 };
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
@@ -2061,8 +2062,6 @@ async function handleJsonRpc(
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo,
-        instructions:
-          'Finna MCP server: a unified search across Finnish libraries, archives, and museums. Use search_records for items, list_organizations for organization IDs, and get_record for details. Prefer top-level helpers (available_online, usage_rights, format, organization, language, year) before raw filters.',
       }),
     );
   }

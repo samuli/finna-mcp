@@ -33,3 +33,5 @@ pnpm-debug.log*
 
 # Local tooling
 *.tsbuildinfo
+
+wrangler.toml
