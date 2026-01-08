@@ -739,8 +739,8 @@ async function handleSearchRecords(env: Env, args: unknown): Promise<Response> {
   });
 
   const baseResult = stripFacetsIfUnused(payload, facets, facet_limit ?? DEFAULT_FACET_LIMIT);
-  // Rename facet fields (value→code, label→name) for consistency
-  const result = renameOrganizationFields(baseResult);
+  // Rename facet fields (value→code, label→name, count→records) for consistency
+  const result = renameFacetFields(baseResult);
 
   return json({
     result: {
@@ -847,13 +847,13 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
 
   result = compactOrganizations(result, compact);
   const finalized = finalizeOrganizations(result, include_paths);
-  // Rename value→code, label→name for consistency with get_record organizations
-  const normalized = renameOrganizationFields(finalized);
+  // Rename value→code, label→name, count→records for consistency
+  const normalized = renameFacetFields(finalized);
   return json({ result: normalized });
 }
 
-// Rename value→code, label→name for all hierarchical facet entries
-function renameOrganizationFields(payload: Record<string, unknown>): Record<string, unknown> {
+// Rename facet fields: value→code, label→name, count→records
+function renameFacetFields(payload: Record<string, unknown>): Record<string, unknown> {
   const facets = payload.facets as Record<string, unknown> | undefined;
   if (!facets || typeof facets !== 'object') {
     return payload;
@@ -871,9 +871,13 @@ function renameOrganizationFields(payload: Record<string, unknown>): Record<stri
     }
     // Rename label/translated → name
     renamed.name = record.label ?? record.translated;
-    // Keep other fields (count, children, path, etc.)
+    // Rename count → records
+    if (typeof record.count === 'number') {
+      renamed.records = record.count;
+    }
+    // Keep other fields (children, path, etc.)
     for (const [key, value] of Object.entries(record)) {
-      if (key !== 'value' && key !== 'label' && key !== 'translated') {
+      if (key !== 'value' && key !== 'label' && key !== 'translated' && key !== 'count') {
         renamed[key] = value;
       }
     }

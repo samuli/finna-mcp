@@ -608,7 +608,7 @@ describe('worker', () => {
     const building = payload.result.facets.building[0];
     // No children in new API-based implementation (top-level only)
     expect(building.children).toBeUndefined();
-    expect(Object.keys(building).sort()).toEqual(['code', 'count', 'name']);
+    expect(Object.keys(building).sort()).toEqual(['code', 'name', 'records']);
     expect(payload.result.meta.compact).toBe(true);
   });
 

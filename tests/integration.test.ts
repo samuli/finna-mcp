@@ -359,7 +359,7 @@ suite('integration (local wrangler)', () => {
   );
 
   it(
-    'list_organizations compact mode returns only code, name, count',
+    'list_organizations compact mode returns only code, name, records',
     async () => {
       if (!available) {
         return;
@@ -386,7 +386,7 @@ suite('integration (local wrangler)', () => {
       }
       const first = entries[0];
       const keys = Object.keys(first).sort();
-      expect(keys).toEqual(['code', 'count', 'name']);
+      expect(keys).toEqual(['code', 'name', 'records']);
     },
     15000,
   );
