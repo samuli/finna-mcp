@@ -841,9 +841,9 @@ function renameFacetFields(payload: Record<string, unknown>): Record<string, unk
     if (typeof record.count === 'number') {
       renamed.records = record.count;
     }
-    // Keep other fields (children, etc.) - exclude path
+    // Keep other fields (children, etc.) - exclude path and href
     for (const [key, value] of Object.entries(record)) {
-      if (key !== 'value' && key !== 'label' && key !== 'translated' && key !== 'count' && key !== 'path') {
+      if (key !== 'value' && key !== 'label' && key !== 'translated' && key !== 'count' && key !== 'path' && key !== 'href') {
         renamed[key] = value;
       }
     }
