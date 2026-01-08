@@ -77,7 +77,7 @@ type WebSearchParams = Omit<SearchParams, 'apiBase' | 'fields' | 'facet_limit'> 
 
 export function buildSearchWebUrl(params: WebSearchParams): string {
   const base = params.uiBase ?? 'https://www.finna.fi';
-  const url = new URL('/search', base);
+  const url = new URL('/Search/Results', base);
   const lookfor = params.lookfor ?? '';
   if (params.searchMode === 'advanced' && lookfor.trim()) {
     appendAdvancedSearch(url, lookfor, params.type, params.advancedOperator);
