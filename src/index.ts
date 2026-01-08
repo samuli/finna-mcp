@@ -115,6 +115,7 @@ const ListToolsResponse = {
       name: 'search_records',
       description:
       'Search and retrieve metadata over records in Finna.fi. Do not use for libraries/organizations; use list_organizations instead. Use "help" tool to get more information and usage examples.',
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
@@ -202,6 +203,7 @@ const ListToolsResponse = {
     {
       name: 'get_record',
       description: 'Get full metadata for one or more records.',
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
@@ -221,6 +223,7 @@ const ListToolsResponse = {
       name: 'list_organizations',
       description:
         'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use only the returned code strings in search_records filters.include.organization (name/path are for display, not filtering). Unfiltered results return only the top 2 levels with meta.pruned=true; use query/filters for deeper levels.',
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
@@ -250,6 +253,7 @@ const ListToolsResponse = {
       name: 'help',
       description:
         'Show a help guide about Finna.fi, search filters, formats, and common usage patterns.',
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {},
@@ -2028,6 +2032,14 @@ type JsonRpcRequest = {
 const SERVER_INFO = {
   name: 'finna-mcp',
   version: '0.1.0',
+  icons: [
+    {
+      url: 'data:image/png;base64,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',
+      mimeType: 'image/png',
+      width: 64,
+      height: 64,
+    },
+  ],
 };
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
