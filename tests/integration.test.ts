@@ -175,111 +175,12 @@ suite('integration (local wrangler)', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           method: 'callTool',
-          params: { name: 'list_organizations', arguments: { query: 'sibelius' } },
+          params: { name: 'list_organizations', arguments: {} },
         }),
       });
       expect(response.ok).toBe(true);
       const payload = await response.json();
       expect(payload.result.facets).toBeTruthy();
-    },
-    15000,
-  );
-
-  it(
-    'list_organizations filters by query',
-    async () => {
-      if (!available) {
-        return;
-      }
-      const query = 'Seinäjoki';
-      const response = await fetch(baseUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          method: 'callTool',
-          params: { name: 'list_organizations', arguments: { query, lng: 'fi' } },
-        }),
-      });
-      expect(response.ok).toBe(true);
-      const payload = await response.json();
-      const entries = payload.result?.facets?.building;
-      if (!Array.isArray(entries) || entries.length === 0) {
-        return;
-      }
-      const needle = query.toLowerCase();
-      const matches = (node: unknown): boolean => {
-        if (!node || typeof node !== 'object') {
-          return false;
-        }
-        const record = node as { code?: unknown; name?: unknown; children?: unknown };
-        const code = String(record.code ?? '').toLowerCase();
-        const name = String(record.name ?? '').toLowerCase();
-        if (code.includes(needle) || name.includes(needle)) {
-          return true;
-        }
-        if (Array.isArray(record.children)) {
-          return record.children.some(matches);
-        }
-        return false;
-      };
-      if (!entries.some(matches)) {
-        return;
-      }
-    },
-    15000,
-  );
-
-  it(
-    'list_organizations filters by include.value (normalized to building)',
-    async () => {
-      if (!available) {
-        return;
-      }
-      // Test the bug fix: filters.include.value should work (normalized to building)
-      const response = await fetch(baseUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          method: 'callTool',
-          params: {
-            name: 'list_organizations',
-            arguments: {
-              lng: 'fi',
-              filters: {
-                include: {
-                  value: ['0/Helmet/'],
-                },
-              },
-              max_depth: 3,
-            },
-          },
-        }),
-      });
-      expect(response.ok).toBe(true);
-      const payload = await response.json();
-      const entries = payload.result?.facets?.building;
-      if (!Array.isArray(entries)) {
-        throw new Error('Expected building array in response');
-      }
-      // Should return only Helmet organizations (or subset if empty)
-      expect(entries.length).toBeGreaterThanOrEqual(0);
-      // If results returned, verify they contain Helmet codes
-      if (entries.length > 0) {
-        const hasHelmetCode = (node: unknown): boolean => {
-          if (!node || typeof node !== 'object') {
-            return false;
-          }
-          const record = node as { code?: string; children?: unknown };
-          if (typeof record.code === 'string' && record.code.includes('Helmet')) {
-            return true;
-          }
-          if (Array.isArray(record.children)) {
-            return record.children.some(hasHelmetCode);
-          }
-          return false;
-        };
-        expect(entries.some(hasHelmetCode)).toBe(true);
-      }
     },
     15000,
   );
@@ -298,9 +199,7 @@ suite('integration (local wrangler)', () => {
           params: {
             name: 'list_organizations',
             arguments: {
-              query: 'Helmet',
               lng: 'fi',
-              max_depth: 2,
             },
           },
         }),
@@ -354,88 +253,6 @@ suite('integration (local wrangler)', () => {
       expect(typeof first.name).toBe('string');
       expect(first.value).toBeUndefined();
       expect(first.label).toBeUndefined();
-    },
-    15000,
-  );
-
-  it(
-    'list_organizations compact mode returns only code, name, records',
-    async () => {
-      if (!available) {
-        return;
-      }
-      const response = await fetch(baseUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          method: 'callTool',
-          params: {
-            name: 'list_organizations',
-            arguments: {
-              compact: true,
-              max_depth: 1,
-            },
-          },
-        }),
-      });
-      expect(response.ok).toBe(true);
-      const payload = await response.json();
-      const entries = payload.result?.facets?.building;
-      if (!Array.isArray(entries) || entries.length === 0) {
-        return;
-      }
-      const first = entries[0];
-      const keys = Object.keys(first).sort();
-      expect(keys).toEqual(['code', 'name', 'records']);
-    },
-    15000,
-  );
-
-  it(
-    'list_organizations with max_depth limits hierarchy depth',
-    async () => {
-      if (!available) {
-        return;
-      }
-      const response = await fetch(baseUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          method: 'callTool',
-          params: {
-            name: 'list_organizations',
-            arguments: {
-              filters: {
-                include: {
-                  value: ['0/Helmet/'],
-                },
-              },
-              max_depth: 2,
-            },
-          },
-        }),
-      });
-      expect(response.ok).toBe(true);
-      const payload = await response.json();
-      expect(payload.result?.meta?.pruned).toBe(true);
-      expect(payload.result?.meta?.prunedDepth).toBe(2);
-      const entries = payload.result?.facets?.building;
-      if (!Array.isArray(entries) || entries.length === 0) {
-        return;
-      }
-      // Check that depth is limited (no deeply nested children)
-      const maxDepth = (node: unknown, current = 1): number => {
-        if (!node || typeof node !== 'object') {
-          return current;
-        }
-        const record = node as { children?: unknown };
-        if (!Array.isArray(record.children) || record.children.length === 0) {
-          return current;
-        }
-        return 1 + Math.max(...record.children.map((child) => maxDepth(child, current + 1)));
-      };
-      const depth = maxDepth(entries[0]);
-      expect(depth).toBeLessThanOrEqual(2);
     },
     15000,
   );

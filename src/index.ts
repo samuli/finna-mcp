@@ -101,13 +101,7 @@ const GetRecordArgs = z.object({
 });
 
 const ListOrganizationsArgs = z.object({
-  query: z.string().default(''),
-  type: z.string().default('AllFields'),
   lng: z.string().optional(),
-  filters: FilterSchema,
-  max_depth: z.number().int().min(1).max(6).optional(),
-  include_paths: z.boolean().optional(),
-  compact: z.boolean().optional(),
 });
 
 const ListToolsResponse = {
@@ -223,30 +217,12 @@ const ListToolsResponse = {
     {
       name: 'list_organizations',
       description:
-        'List organizations (e.g., libraries, museums, archives) that have material in Finna. Use only the returned code strings in search_records filters.include.organization (name/path are for display, not filtering). Unfiltered results return only the top 2 levels with meta.pruned=true; use query/filters for deeper levels.',
+        'List organizations (e.g., libraries, museums, archives) that have material in Finna. Returns the code and name for each organization. Use the code field values in search_records filters (e.g., filters.include.organization with code strings).',
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string' },
-          type: { type: 'string' },
           lng: { type: 'string', description: 'Language code (e.g., "fi", "sv", "en")' },
-          filters: { type: 'object' },
-          max_depth: {
-            type: 'number',
-            description:
-              'Optional max depth for returned hierarchy (1-6)',
-          },
-          include_paths: {
-            type: 'boolean',
-            description:
-              'If true, include a path label for each item (e.g., "Satakirjastot / Rauma / Rauman pääkirjasto").',
-          },
-          compact: {
-            type: 'boolean',
-            description:
-              'If true, return only top-level organizations (no children) with minimal fields.',
-          },
         },
       },
     },
@@ -803,16 +779,12 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
   if (!parsed.success) {
     return json({ error: 'invalid_params', details: parsed.error.format() }, 400);
   }
-  const { query, type, lng, filters, max_depth, include_paths, compact } = parsed.data;
-  const normalizedFilters = normalizeFilters(filters);
-  // Normalize 'value' → 'building' for organization filters
-  const orgFilters = normalizeOrganizationFilters(normalizedFilters);
+  const { lng } = parsed.data;
 
   // Use search API with building facet to get organizations
   const url = buildSearchUrl({
     apiBase: env.FINNA_API_BASE,
     lookfor: '',
-    type,
     lng,
     facets: ['building'],
     facet_limit: 500,
@@ -835,25 +807,14 @@ async function handleListOrganizations(env: Env, args: unknown): Promise<Respons
       count: entry.count,
     }));
 
-  const apiPayload = {
+  const result = {
     status: 'OK',
     resultCount: buildingEntries.length,
     facets: { building: buildingEntries },
   };
 
-  const filtered = filterOrganizationsPayload(apiPayload, query, orgFilters);
-  let result = filtered ?? apiPayload;
-
-  if (max_depth) {
-    result = pruneOrganizationsDepth(result, max_depth, 'max_depth');
-  } else if (!query && !orgFilters) {
-    result = pruneOrganizationsDepth(result, 1, 'unfiltered');
-  }
-
-  result = compactOrganizations(result, compact);
-  const finalized = finalizeOrganizations(result, include_paths);
   // Rename value→code, label→name, count→records for consistency
-  const normalized = renameFacetFields(finalized);
+  const normalized = renameFacetFields(result);
   return json({ result: normalized });
 }
 
@@ -880,9 +841,9 @@ function renameFacetFields(payload: Record<string, unknown>): Record<string, unk
     if (typeof record.count === 'number') {
       renamed.records = record.count;
     }
-    // Keep other fields (children, path, etc.)
+    // Keep other fields (children, etc.) - exclude path
     for (const [key, value] of Object.entries(record)) {
-      if (key !== 'value' && key !== 'label' && key !== 'translated' && key !== 'count') {
+      if (key !== 'value' && key !== 'label' && key !== 'translated' && key !== 'count' && key !== 'path') {
         renamed[key] = value;
       }
     }
@@ -941,47 +902,6 @@ function normalizeFilters(filters?: unknown): FilterInput | undefined {
     }
   }
   return Object.keys(include).length > 0 ? { include } : undefined;
-}
-
-// For list_organizations, normalize 'value' filter key to 'building'
-// since the building facet is what contains organizations
-function normalizeOrganizationFilters(filters?: FilterInput): FilterInput | undefined {
-  if (!filters) {
-    return undefined;
-  }
-  const result: FilterInput = {};
-  const mapBucket = (bucket?: Record<string, string[]>) => {
-    if (!bucket) {
-      return undefined;
-    }
-    const mapped: Record<string, string[]> = {};
-    for (const [key, values] of Object.entries(bucket)) {
-      // Map 'value' → 'building' for organization filters
-      const mappedKey = key === 'value' ? 'building' : key;
-      mapped[mappedKey] = values;
-    }
-    return Object.keys(mapped).length > 0 ? mapped : undefined;
-  };
-
-  if (filters.include) {
-    const mapped = mapBucket(filters.include);
-    if (mapped) {
-      result.include = mapped;
-    }
-  }
-  if (filters.any) {
-    const mapped = mapBucket(filters.any);
-    if (mapped) {
-      result.any = mapped;
-    }
-  }
-  if (filters.exclude) {
-    const mapped = mapBucket(filters.exclude);
-    if (mapped) {
-      result.exclude = mapped;
-    }
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function mergeTopLevelFilters(
@@ -1285,7 +1205,7 @@ Note that this [MCP server](https://github.com/samuli/finna-mcp) is not an offic
 
 5) Discover organization IDs
 \`\`\`json
-{"query": "Helsinki", "include_paths": true}
+{"lng": "fi"}
 \`\`\`
 
 6) Finnish + Swedish materials
@@ -1534,303 +1454,6 @@ function normalizeSort(sort?: string): string | undefined {
   return sort;
 }
 
-
-function filterOrganizationsPayload(
-  payload: Record<string, unknown>,
-  query: string,
-  filters?: FilterInput,
-): Record<string, unknown> | null {
-  const facets = payload.facets as Record<string, unknown> | undefined;
-  const entries = facets?.building;
-  if (!Array.isArray(entries)) {
-    return null;
-  }
-  if (!filters && !query) {
-    return payload;
-  }
-
-  if (filters) {
-    const keys = [
-      ...Object.keys(filters.include ?? {}),
-      ...Object.keys(filters.any ?? {}),
-      ...Object.keys(filters.exclude ?? {}),
-    ];
-    if (keys.some((key) => key !== 'building')) {
-      return null;
-    }
-  }
-
-  let result = entries.slice();
-  const normalizedQuery = query.toLowerCase().trim();
-  const variants = normalizedQuery ? buildLookforVariants(normalizedQuery) : [];
-  const includeValues = new Set(filters?.include?.building ?? []);
-  const anyValues = new Set(filters?.any?.building ?? []);
-  const excludeValues = new Set(filters?.exclude?.building ?? []);
-  if (
-    variants.length > 0 ||
-    includeValues.size > 0 ||
-    anyValues.size > 0 ||
-    excludeValues.size > 0
-  ) {
-    result = filterFacetEntries(result, variants, includeValues, anyValues, excludeValues);
-  }
-
-  return {
-    ...payload,
-    resultCount: result.length,
-    facets: {
-      ...facets,
-      building: result,
-    },
-  };
-}
-
-function pruneOrganizationsDepth(
-  payload: Record<string, unknown>,
-  maxDepth: number,
-  reason: string,
-): Record<string, unknown> {
-  const facets = payload.facets as Record<string, unknown> | undefined;
-  const entries = facets?.building;
-  if (!Array.isArray(entries) || entries.length === 0 || maxDepth < 1) {
-    return payload;
-  }
-  const { pruned, prunedCount } = pruneFacetEntriesDepth(entries, maxDepth, 0);
-  return {
-    ...payload,
-    facets: {
-      ...facets,
-      building: pruned,
-    },
-    meta: {
-      ...(payload.meta as Record<string, unknown> | undefined),
-      pruned: true,
-      prunedDepth: maxDepth,
-      prunedCount,
-      reason,
-      hint:
-        'Use max_depth for deeper levels or include_paths for clearer hierarchy labels.',
-    },
-  };
-}
-
-function finalizeOrganizations(
-  payload: Record<string, unknown>,
-  includePaths?: boolean,
-): Record<string, unknown> {
-  if (!includePaths) {
-    return payload;
-  }
-  const facets = payload.facets as Record<string, unknown> | undefined;
-  const entries = facets?.building;
-  if (!Array.isArray(entries)) {
-    return payload;
-  }
-  const enhanced = addFacetPaths(entries, []);
-  return {
-    ...payload,
-    facets: {
-      ...facets,
-      building: enhanced,
-    },
-  };
-}
-
-function compactOrganizations(
-  payload: Record<string, unknown>,
-  compact?: boolean,
-): Record<string, unknown> {
-  if (!compact) {
-    return payload;
-  }
-  const facets = payload.facets as Record<string, unknown> | undefined;
-  const entries = facets?.building;
-  if (!Array.isArray(entries)) {
-    return payload;
-  }
-  const simplified = entries.map((entry) => {
-    if (!entry || typeof entry !== 'object') {
-      return entry;
-    }
-    const record = entry as Record<string, unknown>;
-    return {
-      value: record.value,
-      label: record.label ?? record.translated,
-      count: record.count,
-    };
-  });
-  return {
-    ...payload,
-    facets: {
-      ...facets,
-      building: simplified,
-    },
-    meta: {
-      ...(payload.meta as Record<string, unknown> | undefined),
-      compact: true,
-    },
-  };
-}
-
-function addFacetPaths(entries: unknown[], ancestors: string[]): unknown[] {
-  return entries.map((entry) => {
-    if (!entry || typeof entry !== 'object') {
-      return entry;
-    }
-    const record = entry as Record<string, unknown>;
-    const label =
-      (typeof record.label === 'string' && record.label) ||
-      (typeof record.translated === 'string' && record.translated) ||
-      '';
-    const pathParts = label ? [...ancestors, label] : [...ancestors];
-    const children = record.children;
-    const enhanced: Record<string, unknown> = { ...record };
-    if (pathParts.length > 0) {
-      enhanced.path = pathParts.join(' / ');
-    }
-    if (Array.isArray(children) && children.length > 0) {
-      enhanced.children = addFacetPaths(children, pathParts);
-    }
-    return enhanced;
-  });
-}
-
-function pruneFacetEntriesDepth(
-  entries: unknown[],
-  maxDepth: number,
-  depth: number,
-): { pruned: unknown[]; prunedCount: number } {
-  let prunedCount = 0;
-  const pruned = entries.map((entry) => {
-    if (!entry || typeof entry !== 'object') {
-      return entry;
-    }
-    const record = entry as Record<string, unknown>;
-    const children = record.children;
-    if (!Array.isArray(children) || children.length === 0) {
-      return record;
-    }
-    if (depth >= maxDepth - 1) {
-      prunedCount += children.length;
-      const { children: omittedChildren, ...rest } = record;
-      void omittedChildren;
-      return rest;
-    }
-    const next = pruneFacetEntriesDepth(children, maxDepth, depth + 1);
-    prunedCount += next.prunedCount;
-    return {
-      ...record,
-      children: next.pruned,
-    };
-  });
-  return { pruned, prunedCount };
-}
-
-function buildLookforVariants(query: string): string[] {
-  if (!query) {
-    return [];
-  }
-  const variants = new Set<string>();
-  variants.add(query);
-  const trimmed = query.replace(/\s+/g, ' ').trim();
-  variants.add(trimmed);
-  if (trimmed.length > 4) {
-    variants.add(trimmed.slice(0, -1));
-  }
-  if (trimmed.endsWith('i')) {
-    variants.add(`${trimmed}n`);
-    variants.add(`${trimmed.slice(0, -1)}en`);
-  }
-  const lastChar = trimmed.at(-1);
-  if (lastChar && 'aäoöuy'.includes(lastChar)) {
-    variants.add(`${trimmed}n`);
-  }
-  variants.delete('');
-  return Array.from(variants);
-}
-
-function filterFacetEntries(
-  entries: unknown[],
-  variants: string[],
-  includeValues: Set<string>,
-  anyValues: Set<string>,
-  excludeValues: Set<string>,
-): unknown[] {
-  const filtered: unknown[] = [];
-  for (const entry of entries) {
-    if (!entry || typeof entry !== 'object') {
-      continue;
-    }
-    const record = entry as Record<string, unknown>;
-    const { kept, node } = filterFacetEntry(record, variants, includeValues, anyValues, excludeValues);
-    if (kept) {
-      filtered.push(node);
-    }
-  }
-  return filtered;
-}
-
-function filterFacetEntry(
-  entry: Record<string, unknown>,
-  variants: string[],
-  includeValues: Set<string>,
-  anyValues: Set<string>,
-  excludeValues: Set<string>,
-): { kept: boolean; node: Record<string, unknown> } {
-  const value = String(entry.value ?? '');
-  const translated = String(entry.translated ?? entry.label ?? '');
-  const valueLower = value.toLowerCase();
-  const translatedLower = translated.toLowerCase();
-  const foldedValue = foldFinnish(valueLower);
-  const foldedTranslated = foldFinnish(translatedLower);
-  const foldedVariants = variants.map((variant) => foldFinnish(variant));
-  const matchesLookfor =
-    variants.length === 0
-      ? true
-      : variants.some(
-          (variant) =>
-            valueLower.includes(variant) || translatedLower.includes(variant),
-        ) ||
-        foldedVariants.some(
-          (variant) =>
-            foldedValue.includes(variant) || foldedTranslated.includes(variant),
-        );
-
-  const hasInclude =
-    includeValues.size === 0 ? true : includeValues.has(value);
-  const hasAny = anyValues.size === 0 ? true : anyValues.has(value);
-  const hasExclude = excludeValues.has(value);
-
-  let kept = matchesLookfor && hasInclude && hasAny && !hasExclude;
-  const updated: Record<string, unknown> = { ...entry };
-
-  const childKeys = ['children', 'child', 'childNodes', 'nodes', 'sub'];
-  for (const key of childKeys) {
-    const children = entry[key];
-    if (!Array.isArray(children)) {
-      continue;
-    }
-    const filteredChildren = filterFacetEntries(
-      children,
-      variants,
-      includeValues,
-      anyValues,
-      excludeValues,
-    );
-    if (filteredChildren.length > 0) {
-      updated[key] = filteredChildren;
-      kept = true;
-    } else if (key in updated) {
-      delete updated[key];
-    }
-  }
-
-  return { kept, node: updated };
-}
-
-function foldFinnish(value: string): string {
-  return value.replace(/[äÄ]/g, 'a').replace(/[öÖ]/g, 'o').replace(/[åÅ]/g, 'a');
-}
 
 async function fetchJson(url: string): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
