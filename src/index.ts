@@ -12,6 +12,7 @@ import {
 type Env = {
   FINNA_API_BASE?: string;
   FINNA_UI_BASE?: string;
+  ASSETS_BASE_URL?: string;
 };
 
 const HIERARCHICAL_FACET_FIELDS = new Set([
@@ -2044,11 +2045,22 @@ async function handleJsonRpc(
   const { id, method } = body;
 
   if (method === 'initialize') {
+    const serverInfo = { ...SERVER_INFO };
+    if (env.ASSETS_BASE_URL) {
+      serverInfo.icons = [
+        {
+          url: `${env.ASSETS_BASE_URL}/icon.png`,
+          mimeType: 'image/png',
+          width: 16,
+          height: 16,
+        },
+      ];
+    }
     return json(
       jsonRpcResult(id, {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: {} },
-        serverInfo: SERVER_INFO,
+        serverInfo,
         instructions:
           'Finna MCP server: a unified search across Finnish libraries, archives, and museums. Use search_records for items, list_organizations for organization IDs, and get_record for details. Prefer top-level helpers (available_online, usage_rights, format, organization, language, year) before raw filters.',
       }),
